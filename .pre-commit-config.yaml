@@ -38,6 +38,6 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=2000]
-        # Allow logo.png at root (source asset) even though it's > 2MB
-        exclude: ^logo\.png$
+        # Allow source assets at root — scaled variants live in web/static/
+        exclude: ^(logo|coffee)\.png$
       - id: detect-private-key

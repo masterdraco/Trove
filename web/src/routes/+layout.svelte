@@ -259,6 +259,26 @@
     </aside>
 
     <main class="min-w-0 flex-1 overflow-auto">
+      <div class="sticky top-0 z-30 border-b border-border/40 bg-background/70 backdrop-blur-xl">
+        <div class="mx-auto flex max-w-[1400px] items-center justify-end px-8 py-2.5">
+          <a
+            href="https://www.buymeacoffee.com/MasterDraco"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group flex items-center gap-3 rounded-xl border border-amber-400/25 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 px-3 py-1.5 text-xs text-muted-foreground transition-all hover:-translate-y-0.5 hover:border-amber-400/60 hover:text-foreground hover:shadow-[0_0_24px_-4px_rgba(251,191,36,0.5)]"
+            title="Support Trove development with a coffee ☕"
+          >
+            <span class="hidden sm:block">Enjoying Trove?</span>
+            <img
+              src="/coffee-240.png"
+              srcset="/coffee-240.png 1x, /coffee-480.png 2x"
+              alt="Buy me a coffee"
+              class="h-9 w-auto transition-transform group-hover:scale-105"
+              loading="lazy"
+            />
+          </a>
+        </div>
+      </div>
       <div class="mx-auto max-w-[1400px] px-8 py-8 animate-fade-in">
         {@render children()}
       </div>
