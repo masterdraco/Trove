@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from trove.ai import agent as ai_agent
 from trove.api.deps import current_user, db_session
-from trove.models.task import TaskRow
+from trove.models.task import SeenReleaseRow, TaskRow
 from trove.models.user import User
 from trove.models.watchlist import WatchlistItemRow
 from trove.services import scheduler
@@ -63,6 +63,10 @@ class WatchlistOut(BaseModel):
     # Auto-download state
     discovery_status: str
     discovery_task_id: int | None
+    # Download progress (computed from seen_release)
+    download_count: int = 0
+    last_download_title: str | None = None
+    last_download_at: datetime | None = None
 
 
 class PromoteResponse(BaseModel):
@@ -88,8 +92,34 @@ def _backdrop_url(path: str | None) -> str | None:
     return f"{BACKDROP_BASE}{path}"
 
 
-def _to_out(row: WatchlistItemRow) -> WatchlistOut:
+def _download_stats(
+    session: Session, task_id: int | None
+) -> tuple[int, str | None, datetime | None]:
+    """Return (count, last_title, last_time) for sent releases on a task."""
+    if task_id is None:
+        return 0, None, None
+    rows = session.exec(
+        select(SeenReleaseRow)
+        .where(SeenReleaseRow.task_id == task_id)
+        .where(SeenReleaseRow.outcome == "sent")
+        .order_by(SeenReleaseRow.seen_at.desc())  # type: ignore[attr-defined]
+    ).all()
+    if not rows:
+        return 0, None, None
+    return len(rows), rows[0].title, rows[0].seen_at
+
+
+def _to_out(row: WatchlistItemRow, session: Session) -> WatchlistOut:
     assert row.id is not None
+    count, last_title, last_at = _download_stats(session, row.discovery_task_id)
+
+    # Movies flip to the terminal 'downloaded' state on first successful grab.
+    # Series keep the 'promoted' state so new episodes keep landing.
+    if row.kind == "movie" and count > 0 and row.discovery_status != "downloaded":
+        row.discovery_status = "downloaded"
+        session.add(row)
+        session.commit()
+
     return WatchlistOut(
         id=row.id,
         kind=row.kind,
@@ -108,6 +138,9 @@ def _to_out(row: WatchlistItemRow) -> WatchlistOut:
         rating=row.rating,
         discovery_status=row.discovery_status,
         discovery_task_id=row.discovery_task_id,
+        download_count=count,
+        last_download_title=last_title,
+        last_download_at=last_at,
     )
 
 
@@ -119,7 +152,7 @@ async def list_items(
     rows = session.exec(
         select(WatchlistItemRow).order_by(WatchlistItemRow.added_at.desc())  # type: ignore[attr-defined]
     ).all()
-    return [_to_out(r) for r in rows]
+    return [_to_out(r, session) for r in rows]
 
 
 @router.post("", response_model=WatchlistOut, status_code=status.HTTP_201_CREATED)
@@ -134,7 +167,7 @@ async def create_item(
             select(WatchlistItemRow).where(WatchlistItemRow.tmdb_id == payload.tmdb_id)
         ).first()
         if existing is not None:
-            return _to_out(existing)
+            return _to_out(existing, session)
 
     row = WatchlistItemRow(
         kind=payload.kind,
@@ -153,7 +186,7 @@ async def create_item(
     session.add(row)
     session.commit()
     session.refresh(row)
-    return _to_out(row)
+    return _to_out(row, session)
 
 
 @router.patch("/{item_id}", response_model=WatchlistOut)
@@ -179,7 +212,7 @@ async def update_item(
     session.add(row)
     session.commit()
     session.refresh(row)
-    return _to_out(row)
+    return _to_out(row, session)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -302,4 +335,4 @@ async def unpromote_item(
     session.add(row)
     session.commit()
     session.refresh(row)
-    return _to_out(row)
+    return _to_out(row, session)

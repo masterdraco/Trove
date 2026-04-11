@@ -136,6 +136,9 @@ export type WatchlistItem = {
   rating: number | null;
   discovery_status: string;
   discovery_task_id: number | null;
+  download_count: number;
+  last_download_title: string | null;
+  last_download_at: string | null;
 };
 
 export type TaskOut = {

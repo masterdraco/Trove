@@ -10,7 +10,9 @@
     PauseCircle,
     Loader2,
     X,
-    TrendingUp
+    TrendingUp,
+    CheckCircle2,
+    Tv
   } from "lucide-svelte";
 
   let items = $state<WatchlistItem[]>([]);
@@ -92,11 +94,36 @@
     }
   }
 
-  function statusLabel(s: string): { text: string; cls: string } {
-    if (s === "promoted") return { text: "Auto-downloading", cls: "chip-primary" };
-    if (s === "downloaded") return { text: "Downloaded", cls: "chip-success" };
-    if (s === "available") return { text: "Available", cls: "chip-primary" };
+  function statusLabel(item: WatchlistItem): { text: string; cls: string } {
+    if (item.kind === "movie" && item.discovery_status === "downloaded") {
+      return { text: "Downloaded", cls: "chip-success" };
+    }
+    if (item.kind === "series" && item.download_count > 0) {
+      return {
+        text: `${item.download_count} ${item.download_count === 1 ? "episode" : "episodes"}`,
+        cls: "chip-success"
+      };
+    }
+    if (item.discovery_status === "promoted") {
+      return { text: "Searching…", cls: "chip-primary" };
+    }
+    if (item.discovery_status === "available") {
+      return { text: "Available", cls: "chip-primary" };
+    }
     return { text: "Tracking", cls: "chip" };
+  }
+
+  function timeAgo(iso: string | null): string {
+    if (!iso) return "";
+    const d = new Date(iso + (iso.endsWith("Z") ? "" : "Z"));
+    const secs = Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+    if (secs < 60) return "just now";
+    const mins = Math.round(secs / 60);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 48) return `${hrs}h ago`;
+    const days = Math.round(hrs / 24);
+    return `${days}d ago`;
   }
 
   function openDetail(item: WatchlistItem) {
@@ -142,7 +169,7 @@
   {:else}
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {#each items as item (item.id)}
-        {@const status = statusLabel(item.discovery_status)}
+        {@const status = statusLabel(item)}
         <div class="surface group overflow-hidden p-0 transition-transform hover:-translate-y-1">
           <button class="block w-full text-left" onclick={() => openDetail(item)}>
             <div class="relative aspect-[2/3] overflow-hidden bg-muted/30">
@@ -176,6 +203,17 @@
               <div class="mt-0.5 text-xs text-muted-foreground">
                 {item.year ?? "—"}
               </div>
+              {#if item.last_download_at}
+                <div class="mt-1 flex items-center gap-1 truncate text-[10px] text-success">
+                  {#if item.kind === "movie"}
+                    <CheckCircle2 class="h-2.5 w-2.5 shrink-0" />
+                    <span class="truncate">Grabbed {timeAgo(item.last_download_at)}</span>
+                  {:else}
+                    <Tv class="h-2.5 w-2.5 shrink-0" />
+                    <span class="truncate">Latest {timeAgo(item.last_download_at)}</span>
+                  {/if}
+                </div>
+              {/if}
             </div>
           </button>
           <div class="flex border-t border-border/50">
@@ -272,7 +310,7 @@
 
 {#if detailItem}
   {@const item = detailItem}
-  {@const status = statusLabel(item.discovery_status)}
+  {@const status = statusLabel(item)}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
@@ -326,6 +364,41 @@
           </div>
           {#if item.overview}
             <p class="mt-4 text-sm leading-relaxed text-foreground/90">{item.overview}</p>
+          {/if}
+          {#if item.download_count > 0}
+            <div class="mt-5 rounded-xl border border-success/30 bg-success/10 p-3 text-xs">
+              <div class="flex items-center gap-2 font-semibold text-success">
+                <CheckCircle2 class="h-3.5 w-3.5" />
+                {#if item.kind === "movie"}
+                  Grabbed
+                {:else}
+                  {item.download_count} {item.download_count === 1 ? "episode" : "episodes"} grabbed
+                {/if}
+              </div>
+              {#if item.last_download_title}
+                <div class="mt-1 font-mono text-[11px] text-foreground/80 break-all">
+                  {item.last_download_title}
+                </div>
+              {/if}
+              {#if item.last_download_at}
+                <div class="mt-0.5 text-muted-foreground">
+                  {timeAgo(item.last_download_at)}
+                </div>
+              {/if}
+              {#if item.discovery_task_id}
+                <a
+                  href={`/tasks/${item.discovery_task_id}`}
+                  class="mt-2 inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  View task run history →
+                </a>
+              {/if}
+            </div>
+          {:else if item.discovery_status === "promoted"}
+            <div class="mt-5 rounded-xl border border-border/50 bg-muted/20 p-3 text-xs text-muted-foreground">
+              <Loader2 class="mr-1.5 inline h-3 w-3 animate-spin" />
+              Task is running — nothing grabbed yet.
+            </div>
           {/if}
           <div class="mt-6 flex gap-2">
             {#if item.discovery_status === "promoted"}
