@@ -42,6 +42,26 @@ LOCAL_TO_CATEGORY_IDS: dict[Category, list[int]] = {
 }
 
 
+def _normalize_download_url(url: str | None) -> str | None:
+    """Clean up download URLs returned by quirky newznab implementations.
+
+    Nzbplanet (and a few others) return links like
+    ``https://api.nzbplanet.net/getnzb/HASH.nzb&i=USER&r=KEY`` — using
+    ``&`` between the path and the query string instead of ``?``. The
+    indexer then ignores the credentials, redirects to ``/login``, and
+    we get an HTML page back instead of a real NZB. Some also pad the
+    URL with trailing whitespace inside the XML element. Sonarr/Radarr
+    silently fix both quirks; mirror that behavior here.
+    """
+    if not url:
+        return url
+    url = url.strip()
+    if "?" not in url and "&" in url:
+        # Promote the first '&' to '?' so query params are recognized.
+        url = url.replace("&", "?", 1)
+    return url
+
+
 class NewznabIndexer(Indexer):
     """Newznab/Torznab adapter.
 
@@ -190,6 +210,8 @@ class NewznabIndexer(Indexer):
         enclosure = item.find("enclosure")
         if download_url is None and enclosure is not None:
             download_url = enclosure.get("url")
+
+        download_url = _normalize_download_url(download_url)
 
         size: int | None = None
         if enclosure is not None:
