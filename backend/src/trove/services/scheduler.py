@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlmodel import Session, select
 
@@ -49,11 +52,37 @@ def schedule_task(task: TaskRow) -> None:
     log.info("scheduler.scheduled", task=task.name, cron=task.schedule_cron)
 
 
+def schedule_run_now(task_id: int, delay_seconds: int = 3) -> None:
+    """Queue a one-shot execution of a task to fire ``delay_seconds`` from
+    now, on top of whatever recurring cron schedule the task already has.
+
+    Used so that tasks created via the UI or the AI agent don't sit idle
+    until their first cron fire (which can be up to the interval duration
+    later). The short delay lets the HTTP response return first and
+    decouples the trigger from DB commit timing.
+    """
+    sched = get_scheduler()
+    job_id = f"task:{task_id}:run-now"
+    run_at = datetime.now(UTC) + timedelta(seconds=delay_seconds)
+    sched.add_job(
+        _execute_task,
+        trigger=DateTrigger(run_date=run_at),
+        args=[task_id],
+        id=job_id,
+        replace_existing=True,
+    )
+    log.info("scheduler.run_now_queued", task_id=task_id, in_seconds=delay_seconds)
+
+
 def unschedule_task(task_id: int) -> None:
     sched = get_scheduler()
     job_id = f"task:{task_id}"
     if sched.get_job(job_id):
         sched.remove_job(job_id)
+    # Also remove any pending run-now one-shot
+    oneshot_id = f"task:{task_id}:run-now"
+    if sched.get_job(oneshot_id):
+        sched.remove_job(oneshot_id)
 
 
 async def _execute_feed(feed_id: int) -> None:

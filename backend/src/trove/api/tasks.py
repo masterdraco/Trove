@@ -95,6 +95,11 @@ async def create_task(
     session.commit()
     session.refresh(row)
     scheduler.schedule_task(row)
+    # Fire once immediately so the first run happens without waiting for
+    # the cron interval. The one-shot runs 3s later to let the response
+    # return first.
+    if payload.enabled and row.id is not None:
+        scheduler.schedule_run_now(row.id)
     return _to_out(row)
 
 

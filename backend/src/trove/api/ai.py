@@ -183,11 +183,15 @@ async def agent_execute(
             session.commit()
             session.refresh(existing)
             scheduler.schedule_task(existing)
+            # Re-run the task immediately so filter changes take effect
+            # without waiting for the next cron fire.
+            assert existing.id is not None
+            scheduler.schedule_run_now(existing.id)
             return AgentExecuteResponse(
                 ok=True,
                 kind="task",
                 resource_id=existing.id,
-                message=f"Updated existing task '{task_name}'",
+                message=f"Updated existing task '{task_name}' — running now",
             )
         row = TaskRow(
             name=task_name,
@@ -199,11 +203,15 @@ async def agent_execute(
         session.commit()
         session.refresh(row)
         scheduler.schedule_task(row)
+        # Fire the task once immediately so the user sees results without
+        # waiting for the first cron interval (up to 2 hours for movies).
+        assert row.id is not None
+        scheduler.schedule_run_now(row.id)
         return AgentExecuteResponse(
             ok=True,
             kind="task",
             resource_id=row.id,
-            message=f"Created task '{task_name}'",
+            message=f"Created task '{task_name}' — running now",
         )
 
     if intent == "add_to_watchlist":
