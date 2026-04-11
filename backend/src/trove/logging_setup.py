@@ -6,6 +6,7 @@ import sys
 import structlog
 
 from trove.config import get_settings
+from trove.log_buffer import LogBufferHandler, structlog_capture_processor
 
 
 def configure_logging() -> None:
@@ -16,6 +17,7 @@ def configure_logging() -> None:
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
+        structlog_capture_processor,
     ]
     if settings.log_json:
         processors.append(structlog.processors.JSONRenderer())
@@ -30,3 +32,9 @@ def configure_logging() -> None:
     )
 
     logging.basicConfig(level=level, format="%(message)s", stream=sys.stdout, force=True)
+
+    # Attach the ring-buffer handler to the root logger exactly once so
+    # uvicorn access/error lines are captured too.
+    root = logging.getLogger()
+    if not any(isinstance(h, LogBufferHandler) for h in root.handlers):
+        root.addHandler(LogBufferHandler(level=level))

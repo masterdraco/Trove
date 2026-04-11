@@ -54,4 +54,4 @@ session.secret
 
 # Logs
 *.log
-logs/
+/logs/
