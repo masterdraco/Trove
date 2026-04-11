@@ -75,13 +75,15 @@ def schedule_feed(feed: FeedRow) -> None:
     if not feed.enabled:
         return
     interval = max(60, int(feed.poll_interval_seconds or 600))
+    # NOTE: do NOT pass next_run_time=None here — that means "paused".
+    # Omitting it lets APScheduler derive the first fire time from the
+    # trigger (now + interval).
     sched.add_job(
         _execute_feed,
         trigger=IntervalTrigger(seconds=interval),
         args=[feed.id],
         id=job_id,
         replace_existing=True,
-        next_run_time=None,  # wait for first interval
     )
     log.info("scheduler.feed_scheduled", name=feed.name, interval_s=interval)
 
