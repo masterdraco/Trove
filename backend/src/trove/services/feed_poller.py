@@ -246,9 +246,7 @@ async def poll_feed(session: Session, feed: FeedRow) -> dict[str, Any]:
         )
 
     # Update stats
-    total = session.exec(
-        select(RssItemRow).where(RssItemRow.feed_id == feed.id)
-    ).all()
+    total = session.exec(select(RssItemRow).where(RssItemRow.feed_id == feed.id)).all()
     feed.total_items = len(total)
     feed.last_new_items = new_count
     feed.last_polled_at = started

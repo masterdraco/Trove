@@ -52,9 +52,7 @@ REGISTRY: dict[str, SettingSpec] = {
         type="int",
         default=600,
         label="Default poll interval (seconds)",
-        description=(
-            "Default polling interval for newly-added RSS feeds. Minimum 60s."
-        ),
+        description=("Default polling interval for newly-added RSS feeds. Minimum 60s."),
         group="rss",
         min_value=60,
         max_value=86400,
@@ -101,9 +99,7 @@ REGISTRY: dict[str, SettingSpec] = {
         type="int",
         default=20,
         label="Temperature (0-100)",
-        description=(
-            "LLM creativity setting x100. 20 = 0.2 (focused), 70 = 0.7 (creative)."
-        ),
+        description=("LLM creativity setting x100. 20 = 0.2 (focused), 70 = 0.7 (creative)."),
         group="ai",
         min_value=0,
         max_value=100,

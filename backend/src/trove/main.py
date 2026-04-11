@@ -74,9 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(watchlist_router.router, prefix="/api/watchlist", tags=["watchlist"])
     app.include_router(feeds_router.router, prefix="/api/feeds", tags=["feeds"])
     app.include_router(docs_router.router, prefix="/api/docs", tags=["docs"])
-    app.include_router(
-        app_settings_router.router, prefix="/api/settings", tags=["settings"]
-    )
+    app.include_router(app_settings_router.router, prefix="/api/settings", tags=["settings"])
     app.include_router(torznab_router.router, prefix="/torznab", tags=["torznab"])
 
     static_dir = Path(__file__).resolve().parent / "static"

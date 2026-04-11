@@ -88,8 +88,7 @@ async def list_docs(
 ) -> list[DocMeta]:
     docs = _load_all()
     return [
-        DocMeta(slug=d.slug, title=d.title, order=d.order, description=d.description)
-        for d in docs
+        DocMeta(slug=d.slug, title=d.title, order=d.order, description=d.description) for d in docs
     ]
 
 

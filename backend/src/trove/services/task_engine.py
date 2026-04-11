@@ -264,9 +264,7 @@ async def run_task(
                         protocol_filter = None
                 feed_names_raw = input_spec.get("feeds")
                 feed_names = (
-                    [str(f) for f in feed_names_raw]
-                    if isinstance(feed_names_raw, list)
-                    else None
+                    [str(f) for f in feed_names_raw] if isinstance(feed_names_raw, list) else None
                 )
                 limit = int(input_spec.get("limit", 500))
                 logger.write(

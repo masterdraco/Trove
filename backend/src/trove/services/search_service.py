@@ -163,9 +163,7 @@ def _search_local_rss(
 
     feed_ids_by_protocol: list[int] | None = None
     if protocol is not None:
-        feeds = session.exec(
-            select(FeedRow).where(FeedRow.protocol_hint == protocol.value)
-        ).all()
+        feeds = session.exec(select(FeedRow).where(FeedRow.protocol_hint == protocol.value)).all()
         feed_ids_by_protocol = [f.id for f in feeds if f.id is not None]
         if not feed_ids_by_protocol:
             return []

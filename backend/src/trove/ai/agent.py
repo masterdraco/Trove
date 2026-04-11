@@ -263,7 +263,10 @@ async def classify_intent(prompt: str) -> dict[str, Any]:
     )
     data = _extract_json(raw)
     if data is None:
-        return {"intent": "chat", "params": {"message": raw.strip() or "Sorry, I did not understand."}}
+        return {
+            "intent": "chat",
+            "params": {"message": raw.strip() or "Sorry, I did not understand."},
+        }
     intent = data.get("intent")
     if not isinstance(intent, str):
         return {"intent": "chat", "params": {"message": "Sorry, I did not understand."}}
