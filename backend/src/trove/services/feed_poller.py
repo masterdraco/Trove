@@ -79,13 +79,20 @@ def _get_download_url(entry: Any) -> str | None:
 
 
 def _published_datetime(entry: Any) -> datetime | None:
+    # SQLite stores datetimes naive, so we strip the tzinfo for consistency
+    # with _naive_utcnow below. Datetimes on the DB column are always
+    # interpreted as UTC.
     pp = getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None)
     if pp is None:
         return None
     try:
-        return datetime(*pp[:6], tzinfo=UTC)
+        return datetime(*pp[:6])
     except (TypeError, ValueError):
         return None
+
+
+def _naive_utcnow() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 async def _fetch_feed(feed: FeedRow) -> str:
@@ -183,7 +190,7 @@ def _entry_to_row(feed_id: int, entry: Any) -> RssItemRow | None:
         leechers=leechers,
         category=category,
         published_at=_published_datetime(entry),
-        fetched_at=datetime.now(UTC),
+        fetched_at=_naive_utcnow(),
         raw_description=description[:4096] if description else None,
     )
 
@@ -191,7 +198,7 @@ def _entry_to_row(feed_id: int, entry: Any) -> RssItemRow | None:
 async def poll_feed(session: Session, feed: FeedRow) -> dict[str, Any]:
     """Fetch one feed, upsert new items, update stats."""
     assert feed.id is not None
-    started = datetime.now(UTC)
+    started = _naive_utcnow()
     try:
         body = await _fetch_feed(feed)
     except httpx.HTTPError as e:
@@ -236,9 +243,12 @@ async def poll_feed(session: Session, feed: FeedRow) -> dict[str, Any]:
         session.add(row)
         new_count += 1
 
-    # Retention cleanup
+    # Retention cleanup — SQLite stores datetimes as naive, and every
+    # fetched_at above is also naive, so cutoff has to match. Otherwise
+    # SQLAlchemy's in-memory bulk evaluator fails comparing the pending
+    # rows against the WHERE expression.
     if feed.retention_days > 0:
-        cutoff = datetime.now(UTC) - timedelta(days=feed.retention_days)
+        cutoff = _naive_utcnow() - timedelta(days=feed.retention_days)
         session.exec(  # type: ignore[call-overload]
             delete(RssItemRow)
             .where(RssItemRow.feed_id == feed.id)
