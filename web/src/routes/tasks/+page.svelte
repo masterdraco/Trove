@@ -247,10 +247,24 @@ outputs:
           <h3 class="text-sm font-semibold">Recent runs</h3>
           <div class="mt-3 space-y-2">
             {#each runs as run}
+              {@const cls =
+                run.status === "success"
+                  ? "text-success"
+                  : run.status === "error"
+                    ? "text-destructive"
+                    : "text-amber-400"}
+              {@const label =
+                run.status === "success"
+                  ? "grabbed"
+                  : run.status === "no_match"
+                    ? "no match"
+                    : run.status === "no_hits"
+                      ? "no hits"
+                      : run.status}
               <details class="rounded-md border border-border bg-background">
                 <summary class="cursor-pointer px-3 py-2 text-xs">
                   <span class="font-mono">{run.started_at}</span>
-                  · {run.status}
+                  · <span class="font-semibold {cls}">{label}</span>
                   · {run.accepted}/{run.considered}
                   {run.dry_run ? "(dry)" : ""}
                 </summary>

@@ -7,8 +7,10 @@ import re
 YEAR_RE = re.compile(r"(?:^|[ .(\[-])(19\d{2}|20\d{2})(?:[ .)\]-]|$)")
 
 # SxxExx pattern — used to distinguish series from movies
-SEASON_EPISODE_RE = re.compile(r"\bS\d{1,2}E\d{1,3}\b", re.IGNORECASE)
+SEASON_EPISODE_RE = re.compile(r"\bS(\d{1,2})E(\d{1,3})\b", re.IGNORECASE)
 SEASON_ONLY_RE = re.compile(r"\bS\d{1,2}\b", re.IGNORECASE)
+
+_STRIP = re.compile(r"[^a-z0-9]+")
 
 
 def extract_year(title: str) -> int | None:
@@ -24,6 +26,34 @@ def extract_year(title: str) -> int | None:
         return int(matches[-1])
     except ValueError:
         return None
+
+
+def extract_episode(title: str) -> tuple[int, int] | None:
+    """Return ``(season, episode)`` parsed from the title, or ``None``."""
+    m = SEASON_EPISODE_RE.search(title)
+    if not m:
+        return None
+    try:
+        return int(m.group(1)), int(m.group(2))
+    except ValueError:
+        return None
+
+
+def normalized_show_prefix(title: str) -> str:
+    """Return the title up to the SxxExx marker, lowercased and alnum-only."""
+    m = SEASON_EPISODE_RE.search(title)
+    prefix = title[: m.start()] if m else title
+    return _STRIP.sub("", prefix.lower())[:40]
+
+
+def normalized_movie_name(title: str) -> str:
+    """Return the title up to the *last* year in the string, lowercased
+    and alnum-only. Matches :func:`extract_year`'s "last year wins" rule
+    so "Blade Runner 2049 (2017)" normalises to ``bladerunner2049``.
+    """
+    matches = list(YEAR_RE.finditer(title))
+    prefix = title[: matches[-1].start()] if matches else title
+    return _STRIP.sub("", prefix.lower())[:40]
 
 
 def looks_like_series(title: str) -> bool:

@@ -21,7 +21,13 @@ from trove.indexers.base import Category
 from trove.models.client import Client
 from trove.models.feed import FeedRow, RssItemRow
 from trove.models.task import SeenReleaseRow, TaskRow, TaskRunRow
-from trove.parsing.title import extract_year, looks_like_series
+from trove.parsing.title import (
+    extract_episode,
+    extract_year,
+    looks_like_series,
+    normalized_movie_name,
+    normalized_show_prefix,
+)
 from trove.services import client_registry, search_service
 
 log = structlog.get_logger()
@@ -37,6 +43,18 @@ def parse_task_config(config_yaml: str) -> dict[str, Any]:
 
 
 def _seen_key(release: search_service.SearchHit) -> str:
+    """Dedup key — same episode/movie across different qualities maps to
+    the same key so a task never grabs "S01E01 1080p" and "S01E01 2160p"
+    as two separate downloads.
+    """
+    ep = extract_episode(release.title)
+    if ep is not None:
+        show = normalized_show_prefix(release.title)
+        return f"e:{show}:s{ep[0]:02d}e{ep[1]:02d}"
+    year = extract_year(release.title)
+    if year is not None:
+        name = normalized_movie_name(release.title)
+        return f"m:{name}:{year}"
     if release.infohash:
         return f"h:{release.infohash.lower()}"
     return f"t:{release.title.lower()}"
@@ -83,8 +101,14 @@ def _read_rss_items(
 
 
 def _pass_filter(hit: search_service.SearchHit, filters: dict[str, Any]) -> tuple[bool, str]:
+    # Seeder filter only applies to torrents — NZB releases have no seeders
+    # and would be dropped unconditionally if treated as zero.
     min_seeders = filters.get("min_seeders")
-    if isinstance(min_seeders, int) and (hit.seeders or 0) < min_seeders:
+    if (
+        isinstance(min_seeders, int)
+        and hit.protocol is Protocol.TORRENT
+        and (hit.seeders or 0) < min_seeders
+    ):
         return False, f"seeders<{min_seeders}"
 
     max_size_mb = filters.get("max_size_mb")
@@ -219,6 +243,7 @@ async def run_task(
     logger = io.StringIO()
     considered = 0
     accepted = 0
+    grabbed_keys: set[str] = set()
     try:
         config = parse_task_config(task.config_yaml)
         inputs = config.get("inputs") or []
@@ -288,16 +313,21 @@ async def run_task(
                     logger.write(f"  drop '{hit.title}': {reason}\n")
                     continue
                 key = _seen_key(hit)
+                if key in grabbed_keys:
+                    logger.write(f"  skip '{hit.title}': dup within run\n")
+                    continue
                 existing = session.exec(
                     select(SeenReleaseRow)
                     .where(SeenReleaseRow.task_id == task.id)
                     .where(SeenReleaseRow.key == key)
+                    .where(SeenReleaseRow.outcome == "sent")
                 ).first()
                 if existing is not None:
-                    logger.write(f"  skip '{hit.title}': already seen\n")
+                    logger.write(f"  skip '{hit.title}': already grabbed\n")
                     continue
                 if dry_run:
                     logger.write(f"  [dry-run] would send '{hit.title}'\n")
+                    grabbed_keys.add(key)
                     accepted += 1
                     continue
                 sent, info = await _send_to_clients(session, hit, outputs, logger)
@@ -310,8 +340,18 @@ async def run_task(
                 )
                 session.add(seen)
                 if sent:
+                    grabbed_keys.add(key)
                     accepted += 1
-        run.status = "success"
+        # Distinguish between "ran cleanly and grabbed something", "ran
+        # cleanly but nothing matched", and "ran cleanly and found zero
+        # hits at all". Previously everything was "success" which made
+        # the UI lie about whether a download actually happened.
+        if accepted > 0:
+            run.status = "success"
+        elif considered > 0:
+            run.status = "no_match"
+        else:
+            run.status = "no_hits"
     except Exception as e:  # pragma: no cover
         logger.write(f"ERROR: {e}\n")
         run.status = "error"
