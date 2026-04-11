@@ -25,8 +25,16 @@ class AiConfig:
 
 
 def get_effective_config(session: Session | None = None) -> AiConfig:
-    """Return the effective AI config, preferring values from the app_setting
-    table and falling back to env-based defaults.
+    """Return the effective AI config with three-tier precedence:
+
+        1. Explicit user override in app_setting table (Settings UI)
+        2. Env var (FLEXREPLACE_/TROVE_AI_ENDPOINT etc.)
+        3. Spec default in app_settings.REGISTRY
+
+    Using get_override() instead of get() is critical here — get()
+    returns the spec default when no DB row exists, which would shadow
+    the env var fallback and leave users stuck on localhost even when
+    they set TROVE_AI_ENDPOINT explicitly.
     """
     env_settings = get_settings()
     close_session = False
@@ -34,13 +42,19 @@ def get_effective_config(session: Session | None = None) -> AiConfig:
         session = Session(get_engine())
         close_session = True
     try:
-        enabled = bool(app_settings.get(session, "ai.enabled"))
-        endpoint = str(app_settings.get(session, "ai.endpoint") or env_settings.ai_endpoint)
-        model = str(app_settings.get(session, "ai.model") or env_settings.ai_model)
+        enabled_override = app_settings.get_override(session, "ai.enabled")
+        enabled = bool(enabled_override) if enabled_override is not None else True
+
+        endpoint_override = app_settings.get_override(session, "ai.endpoint")
+        endpoint = str(endpoint_override or env_settings.ai_endpoint)
+
+        model_override = app_settings.get_override(session, "ai.model")
+        model = str(model_override or env_settings.ai_model)
+
         temp_int = int(app_settings.get(session, "ai.default_temperature"))
-        # Env has no temperature override; fall back to 0.2 on parse errors.
         temperature = max(0.0, min(1.0, temp_int / 100.0)) if temp_int else 0.2
-        # Respect env-level global disable if user has explicitly opted out
+
+        # Env-level global disable has veto power regardless of DB
         enabled = enabled and env_settings.ai_enabled
     finally:
         if close_session:

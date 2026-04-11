@@ -127,12 +127,32 @@ def _serialize(spec: SettingSpec, value: Any) -> str:
 
 
 def get(session: Session, key: str) -> Any:
+    """Return the effective value — DB row if present, otherwise the
+    registered spec default. Callers that always want *some* value use
+    this. Callers that need to distinguish "explicitly saved" from
+    "unset" should use get_override() instead.
+    """
     spec = REGISTRY.get(key)
     if spec is None:
         raise KeyError(f"unknown setting: {key}")
     row = session.get(AppSettingRow, key)
     if row is None:
         return spec.default
+    return _coerce(spec, row.value)
+
+
+def get_override(session: Session, key: str) -> Any | None:
+    """Return the DB value only, or None if the user has never saved an
+    explicit override. Used for three-tier precedence where env vars
+    should be able to shadow the spec default but be themselves
+    shadowed by user-saved values.
+    """
+    spec = REGISTRY.get(key)
+    if spec is None:
+        raise KeyError(f"unknown setting: {key}")
+    row = session.get(AppSettingRow, key)
+    if row is None:
+        return None
     return _coerce(spec, row.value)
 
 
