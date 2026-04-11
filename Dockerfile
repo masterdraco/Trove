@@ -32,11 +32,12 @@ RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 
-# Copy pyproject first for better layer caching
-COPY backend/pyproject.toml ./backend/pyproject.toml
-RUN cd backend && uv pip install --system -e .
-
+# pyproject.toml references ../README.md, so the README must be present
+# at /app/README.md before we install. Copy it first, then the backend
+# source, then install in editable mode.
+COPY README.md ./README.md
 COPY backend/ ./backend/
+RUN cd backend && uv pip install --system -e .
 
 # Copy built web assets into the Python package's static dir
 COPY --from=web-builder /web/build /app/backend/src/trove/static
