@@ -89,34 +89,37 @@
         updating = false;
         return;
       }
-      // Poll /api/health every 2s. The server will go down, come back,
-      // and report the new version. We give up after ~3 minutes.
+      // Poll /api/health every 2s with cache-busting. We succeed the
+      // moment the reported version differs from the starting one —
+      // regardless of whether we observed the down-window (restart may
+      // be faster than our poll interval).
       updateStage = "Server is rebuilding — this takes 1–2 minutes…";
-      const deadline = Date.now() + 180_000;
+      const deadline = Date.now() + 300_000;
       let serverWentDown = false;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2000));
         try {
-          const h = await api.health();
-          if (!serverWentDown) {
-            // Server is still up (pre-restart phase) — keep waiting
-            updateStage = "Pulling code and building…";
-            continue;
-          }
-          // Server came back up — compare versions
+          const res = await fetch(`/api/health?t=${Date.now()}`, {
+            cache: "no-store",
+            credentials: "include"
+          });
+          if (!res.ok) throw new Error(String(res.status));
+          const h = (await res.json()) as { status: string; version: string };
           if (h.version !== startingVersion) {
             updateStage = `Updated to v${h.version}. Reloading…`;
             updating = false;
-            setTimeout(() => window.location.reload(), 1500);
+            setTimeout(() => window.location.reload(), 1200);
             return;
           }
-          updateStage = `Server came back but still v${h.version}. Waiting…`;
+          updateStage = serverWentDown
+            ? `Server came back but still v${h.version}. Waiting…`
+            : "Pulling code and building…";
         } catch {
           serverWentDown = true;
           updateStage = "Server is restarting…";
         }
       }
-      updateError = "Update timed out after 3 minutes. Check /tmp/trove-update.log on the server.";
+      updateError = "Update timed out after 5 minutes. Check /tmp/trove-update.log on the server.";
       updating = false;
     } catch (e) {
       updateError = (e as { detail?: string }).detail ?? "Update failed";
