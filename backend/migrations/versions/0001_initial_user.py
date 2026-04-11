@@ -5,6 +5,7 @@ Revises:
 Create Date: 2026-04-11
 
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -22,9 +23,7 @@ def upgrade() -> None:
         "user",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
         sa.Column("username", sqlmodel.sql.sqltypes.AutoString(length=64), nullable=False),
-        sa.Column(
-            "password_hash", sqlmodel.sql.sqltypes.AutoString(length=255), nullable=False
-        ),
+        sa.Column("password_hash", sqlmodel.sql.sqltypes.AutoString(length=255), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("last_login_at", sa.DateTime(), nullable=True),
     )

@@ -32,9 +32,7 @@ def upgrade() -> None:
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("poll_interval_seconds", sa.Integer(), nullable=False, server_default="600"),
         sa.Column("retention_days", sa.Integer(), nullable=False, server_default="90"),
-        sa.Column(
-            "category_hint", sqlmodel.sql.sqltypes.AutoString(length=64), nullable=True
-        ),
+        sa.Column("category_hint", sqlmodel.sql.sqltypes.AutoString(length=64), nullable=True),
         sa.Column(
             "protocol_hint",
             sqlmodel.sql.sqltypes.AutoString(length=16),
@@ -43,12 +41,8 @@ def upgrade() -> None:
         ),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("last_polled_at", sa.DateTime(), nullable=True),
-        sa.Column(
-            "last_poll_status", sqlmodel.sql.sqltypes.AutoString(length=32), nullable=True
-        ),
-        sa.Column(
-            "last_poll_message", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=True
-        ),
+        sa.Column("last_poll_status", sqlmodel.sql.sqltypes.AutoString(length=32), nullable=True),
+        sa.Column("last_poll_message", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=True),
         sa.Column("total_items", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("last_new_items", sa.Integer(), nullable=False, server_default="0"),
     )
@@ -60,12 +54,8 @@ def upgrade() -> None:
         sa.Column("feed_id", sa.Integer(), sa.ForeignKey("feed.id"), nullable=False),
         sa.Column("guid", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=False),
         sa.Column("title", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=False),
-        sa.Column(
-            "normalized_title", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=False
-        ),
-        sa.Column(
-            "download_url", sqlmodel.sql.sqltypes.AutoString(length=2048), nullable=False
-        ),
+        sa.Column("normalized_title", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=False),
+        sa.Column("download_url", sqlmodel.sql.sqltypes.AutoString(length=2048), nullable=False),
         sa.Column("infohash", sqlmodel.sql.sqltypes.AutoString(length=64), nullable=True),
         sa.Column("size", sa.BigInteger(), nullable=True),
         sa.Column("seeders", sa.Integer(), nullable=True),
@@ -73,9 +63,7 @@ def upgrade() -> None:
         sa.Column("category", sqlmodel.sql.sqltypes.AutoString(length=64), nullable=True),
         sa.Column("published_at", sa.DateTime(), nullable=True),
         sa.Column("fetched_at", sa.DateTime(), nullable=False),
-        sa.Column(
-            "raw_description", sqlmodel.sql.sqltypes.AutoString(length=4096), nullable=True
-        ),
+        sa.Column("raw_description", sqlmodel.sql.sqltypes.AutoString(length=4096), nullable=True),
     )
     op.create_index("ix_rss_item_feed_id", "rss_item", ["feed_id"])
     op.create_index("ix_rss_item_guid", "rss_item", ["guid"])
@@ -84,9 +72,7 @@ def upgrade() -> None:
     op.create_index("ix_rss_item_infohash", "rss_item", ["infohash"])
     op.create_index("ix_rss_item_published_at", "rss_item", ["published_at"])
     op.create_index("ix_rss_item_fetched_at", "rss_item", ["fetched_at"])
-    op.create_index(
-        "uq_rss_item_feed_guid", "rss_item", ["feed_id", "guid"], unique=True
-    )
+    op.create_index("uq_rss_item_feed_guid", "rss_item", ["feed_id", "guid"], unique=True)
 
 
 def downgrade() -> None:

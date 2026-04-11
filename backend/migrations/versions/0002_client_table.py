@@ -30,19 +30,13 @@ def upgrade() -> None:
             sqlmodel.sql.sqltypes.AutoString(length=4096),
             nullable=False,
         ),
-        sa.Column(
-            "default_category", sqlmodel.sql.sqltypes.AutoString(length=128), nullable=True
-        ),
-        sa.Column(
-            "default_save_path", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=True
-        ),
+        sa.Column("default_category", sqlmodel.sql.sqltypes.AutoString(length=128), nullable=True),
+        sa.Column("default_save_path", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=True),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("last_test_at", sa.DateTime(), nullable=True),
         sa.Column("last_test_ok", sa.Boolean(), nullable=True),
-        sa.Column(
-            "last_test_message", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=True
-        ),
+        sa.Column("last_test_message", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=True),
     )
     op.create_index("ix_client_name", "client", ["name"], unique=True)
 

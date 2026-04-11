@@ -37,9 +37,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("last_test_at", sa.DateTime(), nullable=True),
         sa.Column("last_test_ok", sa.Boolean(), nullable=True),
-        sa.Column(
-            "last_test_message", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=True
-        ),
+        sa.Column("last_test_message", sqlmodel.sql.sqltypes.AutoString(length=512), nullable=True),
     )
     op.create_index("ix_indexer_name", "indexer", ["name"], unique=True)
 

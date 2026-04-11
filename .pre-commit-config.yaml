@@ -1,0 +1,43 @@
+# Pre-commit hooks for Trove.
+#
+# Setup on a fresh clone:
+#   pip install --user pre-commit
+#   pre-commit install
+#
+# Then every `git commit` runs these automatically. To run manually
+# against all files without committing:
+#   pre-commit run --all-files
+#
+# To bypass hooks for a single commit (NOT recommended):
+#   git commit --no-verify
+
+repos:
+  # Ruff — Python formatter + linter. Runs against backend only.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.10
+    hooks:
+      - id: ruff-format
+        name: ruff format (backend)
+        files: ^backend/(src|tests|migrations)/.*\.py$
+      - id: ruff
+        name: ruff check (backend)
+        args: [--fix]
+        files: ^backend/(src|tests|migrations)/.*\.py$
+
+  # Generic hygiene hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(backend/migrations/|web/static/).*
+      - id: end-of-file-fixer
+        exclude: ^(backend/migrations/|web/static/).*
+      - id: check-yaml
+        exclude: ^backend/src/trove/docs/.*\.md$
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2000]
+        # Allow logo.png at root (source asset) even though it's > 2MB
+        exclude: ^logo\.png$
+      - id: detect-private-key
