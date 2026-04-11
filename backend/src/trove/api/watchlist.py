@@ -19,7 +19,7 @@ from trove.clients.base import (
 )
 from trove.indexers.base import Category
 from trove.models.client import Client
-from trove.models.task import SeenReleaseRow, TaskRow
+from trove.models.task import SeenReleaseRow, TaskRow, TaskRunRow
 from trove.models.user import User
 from trove.models.watchlist import WatchlistItemRow
 from trove.services import client_registry, scheduler, search_service
@@ -102,6 +102,37 @@ def _backdrop_url(path: str | None) -> str | None:
     if path.startswith("http"):
         return path
     return f"{BACKDROP_BASE}{path}"
+
+
+def _detach_backing_task(session: Session, item: WatchlistItemRow) -> None:
+    """Unschedule + delete the backing task for a watchlist item, but only
+    if no *other* watchlist item references the same task. Cascades the
+    task's children (task_run, seen_release) since FK enforcement is on.
+    Always clears the item's discovery_task_id.
+    """
+    task_id = item.discovery_task_id
+    item.discovery_task_id = None
+    if task_id is None:
+        return
+    other_users = session.exec(
+        select(WatchlistItemRow)
+        .where(WatchlistItemRow.discovery_task_id == task_id)
+        .where(WatchlistItemRow.id != item.id)
+    ).first()
+    if other_users is not None:
+        # Another watchlist item still relies on this task — leave it.
+        return
+    task = session.get(TaskRow, task_id)
+    if task is None:
+        return
+    scheduler.unschedule_task(task_id)
+    for child in session.exec(
+        select(SeenReleaseRow).where(SeenReleaseRow.task_id == task_id)
+    ).all():
+        session.delete(child)
+    for child in session.exec(select(TaskRunRow).where(TaskRunRow.task_id == task_id)).all():
+        session.delete(child)
+    session.delete(task)
 
 
 def _download_stats(
@@ -236,12 +267,7 @@ async def delete_item(
     row = session.get(WatchlistItemRow, item_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    # Also stop any backing download task
-    if row.discovery_task_id is not None:
-        task = session.get(TaskRow, row.discovery_task_id)
-        if task is not None:
-            scheduler.unschedule_task(task.id)  # type: ignore[arg-type]
-            session.delete(task)
+    _detach_backing_task(session, row)
     session.delete(row)
     session.commit()
 
@@ -513,12 +539,7 @@ async def unpromote_item(
     row = session.get(WatchlistItemRow, item_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    if row.discovery_task_id is not None:
-        task = session.get(TaskRow, row.discovery_task_id)
-        if task is not None:
-            scheduler.unschedule_task(task.id)  # type: ignore[arg-type]
-            session.delete(task)
-        row.discovery_task_id = None
+    _detach_backing_task(session, row)
     row.discovery_status = "tracking"
     session.add(row)
     session.commit()

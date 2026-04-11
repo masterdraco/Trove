@@ -16,6 +16,10 @@ def _enable_sqlite_wal(dbapi_connection, connection_record) -> None:  # type: ig
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA synchronous=NORMAL")
+        # Default busy_timeout is 0, so any concurrent writer (e.g. the
+        # scheduler running a task while the API tries to delete one)
+        # gets an immediate "database is locked" error. Wait up to 5s.
+        cursor.execute("PRAGMA busy_timeout=5000")
         cursor.close()
     except Exception:
         pass
