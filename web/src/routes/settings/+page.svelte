@@ -18,7 +18,10 @@
     TrendingUp,
     ExternalLink,
     RefreshCw,
-    Rocket
+    Rocket,
+    Copy,
+    Eye,
+    EyeOff
   } from "lucide-svelte";
 
   type AppSetting = Awaited<ReturnType<typeof api.appSettings.list>>[number];
@@ -70,6 +73,8 @@
   let updating = $state(false);
   let updateStage = $state<string>("");
   let updateError = $state<string | null>(null);
+  let torznabInfo = $state<{ apikey: string; path: string } | null>(null);
+  let showApikey = $state(false);
 
   async function runUpdate() {
     if (
@@ -132,6 +137,11 @@
       aiStatus = await api.ai.status();
     } catch {
       aiStatus = null;
+    }
+    try {
+      torznabInfo = await api.system.torznabInfo();
+    } catch {
+      torznabInfo = null;
     }
     await loadVersion();
     await loadSettings();
@@ -861,10 +871,81 @@
   <div class="rounded-xl border border-border bg-card p-5">
     <h3 class="text-base font-semibold">Torznab export</h3>
     <p class="mt-2 text-sm text-muted-foreground">
-      Point Sonarr/Radarr at this URL. The apikey is the first 32 characters of your session
-      secret — check <code class="font-mono text-xs">config/session.secret</code>.
+      Point Sonarr/Radarr/Lidarr at the URL below. Keep the apikey secret — it's derived from
+      your session secret and grants anonymous search access.
     </p>
-    <pre class="mt-3 overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">{location.origin}/torznab/api?apikey=&lt;first-32-chars&gt;&amp;t=search&amp;q=ubuntu</pre>
+    {#if torznabInfo}
+      {@const baseUrl = `${location.origin}${torznabInfo.path}?apikey=${torznabInfo.apikey}`}
+      <div class="mt-4 space-y-3">
+        <div>
+          <span class="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sonarr / Radarr URL (caps)</span>
+          <div class="mt-1 flex gap-2">
+            <input
+              readonly
+              value={`${baseUrl}&t=caps`}
+              class="w-full rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs"
+              onclick={(e) => (e.currentTarget as HTMLInputElement).select()}
+            />
+            <button
+              class="btn-secondary shrink-0"
+              onclick={() => navigator.clipboard.writeText(`${baseUrl}&t=caps`)}
+              title="Copy"
+            >
+              <Copy class="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        <div>
+          <span class="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Example search</span>
+          <div class="mt-1 flex gap-2">
+            <input
+              readonly
+              value={`${baseUrl}&t=search&q=ubuntu`}
+              class="w-full rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs"
+              onclick={(e) => (e.currentTarget as HTMLInputElement).select()}
+            />
+            <button
+              class="btn-secondary shrink-0"
+              onclick={() => navigator.clipboard.writeText(`${baseUrl}&t=search&q=ubuntu`)}
+              title="Copy"
+            >
+              <Copy class="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        <div>
+          <span class="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">API key</span>
+          <div class="mt-1 flex gap-2">
+            <input
+              readonly
+              type={showApikey ? "text" : "password"}
+              value={torznabInfo.apikey}
+              class="w-full rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs"
+            />
+            <button
+              class="btn-secondary shrink-0"
+              onclick={() => (showApikey = !showApikey)}
+              title={showApikey ? "Hide" : "Show"}
+            >
+              {#if showApikey}
+                <EyeOff class="h-3.5 w-3.5" />
+              {:else}
+                <Eye class="h-3.5 w-3.5" />
+              {/if}
+            </button>
+            <button
+              class="btn-secondary shrink-0"
+              onclick={() => torznabInfo && navigator.clipboard.writeText(torznabInfo.apikey)}
+              title="Copy"
+            >
+              <Copy class="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    {:else}
+      <pre class="mt-3 overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">Loading…</pre>
+    {/if}
   </div>
 
   <div class="surface p-6">

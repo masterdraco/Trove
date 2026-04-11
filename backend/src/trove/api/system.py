@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from trove import __version__
 from trove.api.deps import current_user
+from trove.config import get_settings
 from trove.models.user import User
 
 log = structlog.get_logger()
@@ -187,6 +188,27 @@ async def version_info(
     result = await _run_check()
     _CACHE = _CacheEntry(result=result, ts=now)
     return result
+
+
+class TorznabInfo(BaseModel):
+    apikey: str
+    path: str
+
+
+@router.get("/torznab-info", response_model=TorznabInfo)
+async def torznab_info(_user: User = Depends(current_user)) -> TorznabInfo:
+    """Return the Torznab apikey (first 32 chars of the session secret).
+
+    Used by the Settings UI to render a copy-pasteable Sonarr/Radarr URL
+    without making the user dig through config/session.secret.
+    """
+    settings = get_settings()
+    if not settings.session_secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="session secret is not initialised",
+        )
+    return TorznabInfo(apikey=settings.session_secret[:32], path="/torznab/api")
 
 
 class UpdateTriggerResponse(BaseModel):

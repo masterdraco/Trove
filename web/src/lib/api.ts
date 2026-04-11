@@ -299,7 +299,9 @@ export const api = {
       request<{ ok: boolean; message: string; log_path: string; pid: number | null }>(
         "/api/system/update",
         { method: "POST" }
-      )
+      ),
+    torznabInfo: () =>
+      request<{ apikey: string; path: string }>("/api/system/torznab-info")
   },
 
   backup: {
