@@ -272,7 +272,7 @@
             src="/coffee-480.png"
             srcset="/coffee-480.png 1x, /coffee-720.png 2x"
             alt="Buy me a coffee"
-            class="h-14 w-auto transition-transform group-hover:scale-105"
+            class="h-24 w-auto transition-transform group-hover:scale-105"
             loading="lazy"
           />
         </a>
