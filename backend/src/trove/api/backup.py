@@ -29,7 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from trove import __version__
-from trove.api.deps import current_user
+from trove.api.deps import current_user, current_user_id_offline
 from trove.config import get_settings
 from trove.db import get_engine
 from trove.models.user import User
@@ -129,7 +129,7 @@ async def download_backup(
 @router.post("/restore")
 async def restore_backup(
     file: UploadFile,
-    _user: User = Depends(current_user),
+    _user_id: int = Depends(current_user_id_offline),
 ) -> dict[str, str | int | None]:
     settings = get_settings()
     db_path = settings.config_dir / "trove.db"

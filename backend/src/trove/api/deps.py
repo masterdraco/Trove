@@ -34,3 +34,22 @@ def current_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user_not_found")
     return user
+
+
+def current_user_id_offline(request: Request) -> int:
+    """Auth check that does NOT touch the database.
+
+    Validates the session cookie's signature against ``session.secret``
+    and returns the user id from the token. Used by recovery endpoints
+    (restore) that have to keep working even when the DB is corrupt or
+    missing — otherwise the bootstrap is impossible: you can't fix a
+    broken DB through an endpoint that requires looking up a user in
+    that same DB.
+    """
+    token = _session_token_from_request(request)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
+    user_id = auth_service.read_session_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_session")
+    return user_id
