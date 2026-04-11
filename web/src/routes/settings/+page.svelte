@@ -16,13 +16,19 @@
     Archive,
     AlertTriangle,
     TrendingUp,
-    ExternalLink
+    ExternalLink,
+    RefreshCw,
+    Rocket
   } from "lucide-svelte";
 
   type AppSetting = Awaited<ReturnType<typeof api.appSettings.list>>[number];
 
+  type VersionInfo = Awaited<ReturnType<typeof api.system.version>>;
+
   let aiStatus = $state<{ enabled: boolean; endpoint: string; model: string } | null>(null);
   let version = $state<string | null>(null);
+  let versionInfo = $state<VersionInfo | null>(null);
+  let versionChecking = $state(false);
   let testing = $state(false);
   let testResult = $state<{ ok: boolean; message: string } | null>(null);
   let availableModels = $state<
@@ -48,18 +54,26 @@
     }
   }
 
+  async function loadVersion(force = false) {
+    versionChecking = true;
+    try {
+      versionInfo = await api.system.version(force);
+      version = versionInfo.current;
+    } catch (e) {
+      version = null;
+      versionInfo = null;
+    } finally {
+      versionChecking = false;
+    }
+  }
+
   onMount(async () => {
     try {
       aiStatus = await api.ai.status();
     } catch {
       aiStatus = null;
     }
-    try {
-      const h = await api.health();
-      version = h.version;
-    } catch {
-      version = null;
-    }
+    await loadVersion();
     await loadSettings();
   });
 
@@ -368,16 +382,98 @@
     </p>
   </div>
 
-  <div class="rounded-xl border border-border bg-card p-5">
-    <h3 class="flex items-center gap-2 text-base font-semibold">
-      <Globe class="h-4 w-4" /> System
-    </h3>
-    <dl class="mt-3 grid grid-cols-2 gap-3 text-sm">
-      <dt class="text-muted-foreground">Version</dt>
-      <dd class="font-mono">{version ?? "?"}</dd>
+  <div class="surface p-5">
+    <div class="flex items-start justify-between">
+      <h3 class="flex items-center gap-2 text-base font-semibold">
+        <Globe class="h-4 w-4" /> System
+      </h3>
+      <button
+        class="btn-secondary"
+        onclick={() => loadVersion(true)}
+        disabled={versionChecking}
+      >
+        {#if versionChecking}
+          <Loader2 class="h-3.5 w-3.5 animate-spin" />
+        {:else}
+          <RefreshCw class="h-3.5 w-3.5" />
+        {/if}
+        Check for updates
+      </button>
+    </div>
+
+    <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+      <dt class="text-muted-foreground">Installed</dt>
+      <dd class="flex items-center gap-2 font-mono">
+        v{version ?? "?"}
+        {#if versionInfo?.update_available}
+          <span class="chip-primary inline-flex items-center gap-1">
+            <Rocket class="h-3 w-3" />
+            Update available
+          </span>
+        {:else if versionInfo && versionInfo.latest && !versionInfo.update_available}
+          <span class="chip-success inline-flex items-center gap-1">
+            <CheckCircle2 class="h-3 w-3" />
+            Up to date
+          </span>
+        {/if}
+      </dd>
+
+      {#if versionInfo?.latest}
+        <dt class="text-muted-foreground">Latest on GitHub</dt>
+        <dd class="font-mono">
+          v{versionInfo.latest}
+          {#if versionInfo.source === "github_releases"}
+            <span class="ml-2 text-[10px] text-muted-foreground">(release)</span>
+          {:else if versionInfo.source === "github_pyproject"}
+            <span class="ml-2 text-[10px] text-muted-foreground">(pyproject main)</span>
+          {/if}
+        </dd>
+      {/if}
+
       <dt class="text-muted-foreground">Web origin</dt>
       <dd class="font-mono text-xs">{location.origin}</dd>
     </dl>
+
+    {#if versionInfo?.error}
+      <div class="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+        <AlertTriangle class="inline h-3 w-3" /> {versionInfo.error}
+      </div>
+    {/if}
+
+    {#if versionInfo?.update_available}
+      <div class="mt-4 rounded-xl border border-primary/30 bg-primary/10 p-4">
+        <div class="flex items-start gap-3">
+          <Rocket class="mt-0.5 h-4 w-4 text-primary" />
+          <div class="flex-1">
+            <div class="text-sm font-semibold">
+              Trove v{versionInfo.latest} is available
+            </div>
+            <div class="mt-1 text-xs text-muted-foreground">
+              You're running v{versionInfo.current}. Pull the latest code and rebuild the container
+              to upgrade. Your database and session secret are preserved across upgrades.
+            </div>
+            {#if versionInfo.release_notes}
+              <details class="mt-3">
+                <summary class="cursor-pointer text-xs text-primary hover:underline">
+                  Release notes
+                </summary>
+                <pre class="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap rounded-md bg-background/50 p-3 text-[11px] text-foreground/80">{versionInfo.release_notes}</pre>
+              </details>
+            {/if}
+            {#if versionInfo.release_url}
+              <a
+                href={versionInfo.release_url}
+                target="_blank"
+                rel="noopener"
+                class="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              >
+                View on GitHub <ExternalLink class="h-2.5 w-2.5" />
+              </a>
+            {/if}
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
 
   <div class="surface relative overflow-hidden p-6">

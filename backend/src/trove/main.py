@@ -22,6 +22,7 @@ from trove.api import feeds as feeds_router
 from trove.api import health as health_router
 from trove.api import indexers as indexers_router
 from trove.api import search as search_router
+from trove.api import system as system_router
 from trove.api import tasks as tasks_router
 from trove.api import torznab as torznab_router
 from trove.api import watchlist as watchlist_router
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(feeds_router.router, prefix="/api/feeds", tags=["feeds"])
     app.include_router(docs_router.router, prefix="/api/docs", tags=["docs"])
     app.include_router(discover_router.router, prefix="/api/discover", tags=["discover"])
+    app.include_router(system_router.router, prefix="/api/system", tags=["system"])
     app.include_router(backup_router.router, prefix="/api/backup", tags=["backup"])
     app.include_router(app_settings_router.router, prefix="/api/settings", tags=["settings"])
     app.include_router(torznab_router.router, prefix="/torznab", tags=["torznab"])

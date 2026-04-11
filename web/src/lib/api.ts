@@ -283,6 +283,20 @@ export const api = {
       body: JSON.stringify(payload)
     }),
 
+  system: {
+    version: (force = false) =>
+      request<{
+        current: string;
+        latest: string | null;
+        update_available: boolean;
+        source: string | null;
+        release_notes: string | null;
+        release_url: string | null;
+        checked_at: number;
+        error: string | null;
+      }>(`/api/system/version${force ? "?force=true" : ""}`)
+  },
+
   backup: {
     downloadUrl: "/api/backup",
     restore: async (file: File) => {
