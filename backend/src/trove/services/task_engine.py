@@ -376,24 +376,95 @@ async def run_task(
                 tmdb_id = str(tmdb_id_raw) if tmdb_id_raw not in (None, "") else None
                 imdb_id_raw = input_spec.get("imdb_id")
                 imdb_id = str(imdb_id_raw) if imdb_id_raw not in (None, "") else None
+                # Per-season backfill: a single tvsearch caps at ~100 hits,
+                # which usually only covers the most recent season + a few
+                # stragglers. When the user has explicitly enabled backfill
+                # (or it's a watchlist series with a tmdb_id and no
+                # season set), iterate season=1..N. To avoid burning 20+
+                # indexer hits per cron after the initial backfill is
+                # done, we shrink the scan to the latest 2 seasons once
+                # this task already has any "sent" releases on file —
+                # the periodic check then only looks for new episodes of
+                # the current and upcoming season.
+                seasons_cfg = input_spec.get("seasons")
+                seasons_to_query: list[int | None] = [None]
+
+                def _highest_seen_season() -> int:
+                    rows = session.exec(
+                        select(SeenReleaseRow)
+                        .where(SeenReleaseRow.task_id == task.id)
+                        .where(SeenReleaseRow.outcome == "sent")
+                    ).all()
+                    best = 0
+                    import re
+
+                    for r in rows:
+                        m = re.match(r"e:[^:]+:s(\d+)e\d+", r.key)
+                        if m:
+                            best = max(best, int(m.group(1)))
+                    return best
+
+                if seasons_cfg == "auto" or (
+                    seasons_cfg is None and tmdb_id and Category.TV in category_values
+                ):
+                    # high == 0 → never backfilled, do full sweep (1..20).
+                    # high > 0  → already have content, just check current
+                    #             season and the next one (in case it
+                    #             just aired).
+                    high = _highest_seen_season()
+                    seasons_to_query = list(range(1, 21)) if high == 0 else [high, high + 1]
+                elif isinstance(seasons_cfg, list):
+                    seasons_to_query = [int(s) for s in seasons_cfg if isinstance(s, (int, str))]
+                elif isinstance(seasons_cfg, int):
+                    seasons_to_query = [seasons_cfg]
+
                 extras = ""
                 if tmdb_id:
                     extras += f" tmdb={tmdb_id}"
                 if imdb_id:
                     extras += f" imdb={imdb_id}"
+                if seasons_to_query != [None]:
+                    extras += f" backfill={seasons_to_query[0]}..{seasons_to_query[-1]}"
                 logger.write(f"search: {query} (cats={category_values}{extras})\n")
-                response = await search_service.run_search(
-                    session,
-                    query,
-                    categories=category_values,
-                    tmdb_id=tmdb_id,
-                    imdb_id=imdb_id,
-                )
-                logger.write(
-                    f"  got {len(response.hits)} hits in {response.elapsed_ms}ms "
-                    f"from {response.indexers_used} indexers\n"
-                )
-                hits = response.hits
+
+                hits = []
+                seen_urls: set[str] = set()
+                empty_streak = 0
+                for season in seasons_to_query:
+                    response = await search_service.run_search(
+                        session,
+                        query,
+                        categories=category_values,
+                        tmdb_id=tmdb_id,
+                        imdb_id=imdb_id,
+                        season=season,
+                    )
+                    new = [
+                        h
+                        for h in response.hits
+                        if h.download_url and h.download_url not in seen_urls
+                    ]
+                    for h in new:
+                        if h.download_url:
+                            seen_urls.add(h.download_url)
+                    if season is None:
+                        logger.write(
+                            f"  got {len(response.hits)} hits "
+                            f"in {response.elapsed_ms}ms from {response.indexers_used} indexers\n"
+                        )
+                    else:
+                        logger.write(
+                            f"  s{season:02d}: {len(response.hits)} hits ({len(new)} new) "
+                            f"in {response.elapsed_ms}ms\n"
+                        )
+                    hits.extend(new)
+                    if season is not None and len(new) == 0:
+                        empty_streak += 1
+                        if empty_streak >= 2:
+                            logger.write("  stop backfill: 2 empty seasons in a row\n")
+                            break
+                    else:
+                        empty_streak = 0
             elif kind == "rss_items":
                 proto_str = input_spec.get("protocol")
                 protocol_filter: Protocol | None = None

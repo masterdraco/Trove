@@ -160,8 +160,34 @@ class NewznabIndexer(Indexer):
         return IndexerHealth(ok=True, version=version, supported_categories=supported)
 
     async def search(self, query: SearchQuery) -> list[Release]:
+        # Pick the most specific endpoint we can. The generic "search"
+        # endpoint does free-text search and *ignores* metadata IDs like
+        # tmdbid/imdbid — passing them is silently dropped. Only the
+        # "tvsearch" / "movie" endpoints actually filter by ID, which
+        # gives dramatically better backfill (verified on Nzbplanet:
+        # tvsearch+tmdbid returned 64 unique episodes vs. 10 for plain
+        # search of the same show).
+        cats = query.categories or []
+        wants_movie = (
+            Category.MOVIES in cats
+            and query.imdb_id
+            and not (query.season is not None or query.episode is not None)
+        )
+        wants_tv = (
+            query.season is not None
+            or query.episode is not None
+            or query.tmdb_id is not None
+            or any(c in (Category.TV, Category.ANIME) for c in cats)
+        )
+        if wants_movie:
+            t = "movie"
+        elif wants_tv:
+            t = "tvsearch"
+        else:
+            t = "search"
+
         params: dict[str, Any] = {
-            "t": "tvsearch" if query.season is not None or query.episode is not None else "search",
+            "t": t,
             "q": query.terms,
             "limit": query.limit,
         }
@@ -174,9 +200,9 @@ class NewznabIndexer(Indexer):
         if query.tmdb_id:
             params["tmdbid"] = query.tmdb_id
 
-        if query.categories:
+        if cats:
             ids: list[int] = []
-            for cat in query.categories:
+            for cat in cats:
                 ids.extend(LOCAL_TO_CATEGORY_IDS.get(cat, []))
             if ids:
                 params["cat"] = ",".join(str(i) for i in ids)

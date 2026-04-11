@@ -211,6 +211,8 @@ async def run_search(
     timeout_per_indexer: float = 15.0,
     tmdb_id: str | None = None,
     imdb_id: str | None = None,
+    season: int | None = None,
+    episode: int | None = None,
 ) -> SearchResponse:
     start = time.monotonic()
     rows = session.exec(
@@ -236,6 +238,8 @@ async def run_search(
                         limit=limit,
                         tmdb_id=tmdb_id,
                         imdb_id=imdb_id,
+                        season=season,
+                        episode=episode,
                     )
                 )
             return row.name, releases
