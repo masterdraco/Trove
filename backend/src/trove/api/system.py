@@ -90,47 +90,29 @@ async def _fetch_pyproject_version(client: httpx.AsyncClient) -> str | None:
 
 
 async def _run_check() -> UpdateCheck:
+    """Resolve the latest version by taking the highest of:
+
+    1. The tag on GitHub Releases (/releases/latest)
+    2. The version field in backend/pyproject.toml on main
+
+    Either is fine on its own — when both exist, pick the newer. This
+    means a plain git push with a bumped pyproject.toml is enough to
+    surface an update, and creating a GitHub Release is only needed
+    when you want release notes shown inline.
+    """
     now = time.time()
+    release_data: dict | None = None
+    release_version: str | None = None
+    pyproject_version: str | None = None
+
     try:
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            release = await _fetch_latest_release(client)
-            if release is not None:
-                tag = release.get("tag_name") or release.get("name") or ""
-                latest = tag.lstrip("v")
-                return UpdateCheck(
-                    current=__version__,
-                    latest=latest or None,
-                    update_available=bool(latest and _is_newer(latest, __version__)),
-                    source="github_releases",
-                    release_notes=release.get("body") or None,
-                    release_url=release.get("html_url") or None,
-                    checked_at=now,
-                )
-            # Fallback: read pyproject.toml from main
-            latest = await _fetch_pyproject_version(client)
-            if latest is None:
-                return UpdateCheck(
-                    current=__version__,
-                    latest=None,
-                    update_available=False,
-                    source=None,
-                    release_notes=None,
-                    release_url=None,
-                    checked_at=now,
-                    error=(
-                        "Could not reach GitHub — repo may be private or rate-limited. "
-                        "Make sure masterdraco/Trove is public."
-                    ),
-                )
-            return UpdateCheck(
-                current=__version__,
-                latest=latest,
-                update_available=_is_newer(latest, __version__),
-                source="github_pyproject",
-                release_notes=None,
-                release_url=f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}",
-                checked_at=now,
-            )
+            release_data = await _fetch_latest_release(client)
+            if release_data is not None:
+                tag = release_data.get("tag_name") or release_data.get("name") or ""
+                release_version = tag.lstrip("v") or None
+
+            pyproject_version = await _fetch_pyproject_version(client)
     except httpx.HTTPError as e:
         return UpdateCheck(
             current=__version__,
@@ -142,6 +124,44 @@ async def _run_check() -> UpdateCheck:
             checked_at=now,
             error=f"http error: {e}",
         )
+
+    # Neither resolver returned anything — repo is probably private or
+    # we hit the unauthenticated rate limit
+    if release_version is None and pyproject_version is None:
+        return UpdateCheck(
+            current=__version__,
+            latest=None,
+            update_available=False,
+            source=None,
+            release_notes=None,
+            release_url=None,
+            checked_at=now,
+            error=(
+                "Could not reach GitHub — repo may be private or rate-limited. "
+                "Make sure masterdraco/Trove is public."
+            ),
+        )
+
+    # Pick the higher of the two, preferring release when equal because
+    # it carries richer metadata (release notes, html_url).
+    candidates: list[tuple[str, str, dict | None]] = []
+    if pyproject_version:
+        candidates.append((pyproject_version, "github_pyproject", None))
+    if release_version:
+        candidates.append((release_version, "github_releases", release_data))
+    candidates.sort(key=lambda c: _parse_version(c[0]), reverse=True)
+    latest, source, winning_release = candidates[0]
+
+    return UpdateCheck(
+        current=__version__,
+        latest=latest,
+        update_available=_is_newer(latest, __version__),
+        source=source,
+        release_notes=(winning_release or {}).get("body") or None,
+        release_url=(winning_release or {}).get("html_url")
+        or f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}",
+        checked_at=now,
+    )
 
 
 @router.get("/version", response_model=UpdateCheck)
