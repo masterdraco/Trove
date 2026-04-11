@@ -103,6 +103,41 @@ export type SearchResponse = {
   errors: { name: string; message: string }[];
 };
 
+export type DiscoverItem = {
+  tmdb_id: number;
+  kind: "movie" | "tv";
+  title: string;
+  original_title: string | null;
+  year: number | null;
+  overview: string | null;
+  poster_url: string | null;
+  backdrop_url: string | null;
+  rating: number | null;
+  genres: string[];
+  release_date: string | null;
+  popularity: number | null;
+};
+
+export type WatchlistItem = {
+  id: number;
+  kind: string;
+  title: string;
+  year: number | null;
+  target_quality: string | null;
+  status: string;
+  notes: string | null;
+  added_at: string;
+  tmdb_id: number | null;
+  tmdb_type: string | null;
+  poster_url: string | null;
+  backdrop_url: string | null;
+  overview: string | null;
+  release_date: string | null;
+  rating: number | null;
+  discovery_status: string;
+  discovery_task_id: number | null;
+};
+
 export type TaskOut = {
   id: number;
   name: string;
@@ -275,6 +310,28 @@ export const api = {
     }
   },
 
+  discover: {
+    status: () =>
+      request<{ configured: boolean }>("/api/discover/status"),
+    trending: (media: "all" | "movie" | "tv" = "all", window: "day" | "week" = "week") =>
+      request<DiscoverItem[]>(`/api/discover/trending?media=${media}&window=${window}`),
+    popular: (media: "movie" | "tv" = "movie") =>
+      request<DiscoverItem[]>(`/api/discover/popular?media=${media}`),
+    upcomingMovies: () => request<DiscoverItem[]>("/api/discover/upcoming/movies"),
+    onAirTv: () => request<DiscoverItem[]>("/api/discover/on-air/tv"),
+    search: (q: string, kind: "multi" | "movie" | "tv" = "multi") =>
+      request<DiscoverItem[]>(
+        `/api/discover/search?q=${encodeURIComponent(q)}&kind=${kind}`
+      ),
+    movie: (tmdbId: number) => request<DiscoverItem>(`/api/discover/movie/${tmdbId}`),
+    tv: (tmdbId: number) => request<DiscoverItem>(`/api/discover/tv/${tmdbId}`),
+    test: () =>
+      request<{ ok: boolean; message?: string; image_base?: string }>(
+        "/api/discover/test",
+        { method: "POST" }
+      )
+  },
+
   docs: {
     list: () =>
       request<{ slug: string; title: string; order: number; description: string }[]>(
@@ -417,27 +474,22 @@ export const api = {
   },
 
   watchlist: {
-    list: () =>
-      request<
-        {
-          id: number;
-          kind: string;
-          title: string;
-          year: number | null;
-          target_quality: string | null;
-          status: string;
-          notes: string | null;
-          added_at: string;
-        }[]
-      >("/api/watchlist"),
+    list: () => request<WatchlistItem[]>("/api/watchlist"),
     create: (payload: {
       kind: "series" | "movie";
       title: string;
       year?: number | null;
       target_quality?: string | null;
       notes?: string | null;
+      tmdb_id?: number | null;
+      tmdb_type?: "movie" | "tv" | null;
+      poster_path?: string | null;
+      backdrop_path?: string | null;
+      overview?: string | null;
+      release_date?: string | null;
+      rating?: number | null;
     }) =>
-      request<{ id: number }>("/api/watchlist", {
+      request<WatchlistItem>("/api/watchlist", {
         method: "POST",
         body: JSON.stringify(payload)
       }),
@@ -449,7 +501,16 @@ export const api = {
       request<void>(`/api/watchlist/${id}`, {
         method: "PATCH",
         body: JSON.stringify(payload)
-      })
+      }),
+    promote: (id: number) =>
+      request<{
+        ok: boolean;
+        watchlist_id: number;
+        task_id: number | null;
+        message: string;
+      }>(`/api/watchlist/${id}/promote`, { method: "POST" }),
+    unpromote: (id: number) =>
+      request<WatchlistItem>(`/api/watchlist/${id}/unpromote`, { method: "POST" })
   },
 
   ai: {

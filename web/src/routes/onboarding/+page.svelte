@@ -25,7 +25,7 @@
     Trash2
   } from "lucide-svelte";
 
-  type Step = "welcome" | "client" | "indexer" | "ai" | "done";
+  type Step = "welcome" | "client" | "indexer" | "ai" | "tmdb" | "done";
   let step = $state<Step>("welcome");
 
   let clients = $state<DownloadClientOut[]>([]);
@@ -81,6 +81,11 @@
   // AI state
   let aiTesting = $state(false);
   let aiResult = $state<{ ok: boolean; msg: string } | null>(null);
+
+  // TMDB state
+  let tmdbToken = $state("");
+  let tmdbSaving = $state(false);
+  let tmdbResult = $state<{ ok: boolean; msg: string } | null>(null);
 
   function dismiss() {
     try {
@@ -208,6 +213,26 @@
     }
   }
 
+  async function saveTmdbAndTest() {
+    tmdbSaving = true;
+    tmdbResult = null;
+    try {
+      await api.appSettings.update({ "tmdb.api_token": tmdbToken });
+      const r = await api.discover.test();
+      tmdbResult = {
+        ok: r.ok,
+        msg: r.ok ? "Connected to TMDB" : r.message ?? "failed"
+      };
+    } catch (e) {
+      tmdbResult = {
+        ok: false,
+        msg: (e as { detail?: string }).detail ?? "Failed to save or test"
+      };
+    } finally {
+      tmdbSaving = false;
+    }
+  }
+
   function finish() {
     dismiss();
     goto("/");
@@ -218,6 +243,7 @@
     { key: "client", label: "Download client", icon: Download },
     { key: "indexer", label: "Indexer", icon: Database },
     { key: "ai", label: "AI", icon: Sparkles },
+    { key: "tmdb", label: "Discover", icon: Sparkles },
     { key: "done", label: "Done", icon: PartyPopper }
   ];
 
@@ -695,17 +721,100 @@
         <button
           type="button"
           class="rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
-          onclick={() => (step = "done")}
+          onclick={() => (step = "tmdb")}
         >
           Skip
         </button>
         <button
           type="button"
           class="inline-flex items-center gap-1 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          onclick={() => (step = "done")}
+          onclick={() => (step = "tmdb")}
         >
           Continue <ChevronRight class="h-4 w-4" />
         </button>
+      </div>
+    </div>
+  {/if}
+
+  {#if step === "tmdb"}
+    <div class="surface p-8">
+      <h2 class="flex items-center gap-2 text-xl font-semibold">
+        <Sparkles class="h-5 w-5 text-rose-400" /> TMDB (optional)
+      </h2>
+      <p class="mt-1 text-sm text-muted-foreground">
+        TMDB powers the Discover page — browse trending movies and TV with posters,
+        descriptions, and one-click "Add to watchlist". You can skip this and add a token
+        later in Settings.
+      </p>
+      <ol class="mt-4 space-y-1.5 text-xs text-muted-foreground">
+        <li>1. Sign up for a free account at
+          <a
+            href="https://www.themoviedb.org/signup"
+            target="_blank"
+            rel="noopener"
+            class="text-primary hover:underline"
+          >themoviedb.org</a>
+        </li>
+        <li>2. Go to <a
+          href="https://www.themoviedb.org/settings/api"
+          target="_blank"
+          rel="noopener"
+          class="text-primary hover:underline"
+        >Settings → API</a></li>
+        <li>3. Copy the <strong>API Read Access Token (v4)</strong></li>
+        <li>4. Paste it below</li>
+      </ol>
+
+      <div class="mt-5">
+        <label class="block">
+          <span class="mb-1.5 block text-sm font-medium">API read token</span>
+          <input
+            type="password"
+            bind:value={tmdbToken}
+            placeholder="eyJhbGciOi..."
+            class="input-base font-mono text-xs"
+          />
+        </label>
+      </div>
+
+      {#if tmdbResult}
+        <div
+          class="mt-3 rounded-md border px-3 py-2 text-xs {tmdbResult.ok
+            ? 'border-success/30 bg-success/10 text-success'
+            : 'border-destructive/30 bg-destructive/10 text-destructive'}"
+        >
+          {tmdbResult.msg}
+        </div>
+      {/if}
+
+      <div class="mt-8 flex items-center justify-between">
+        <button
+          type="button"
+          class="rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
+          onclick={() => (step = "done")}
+        >
+          Skip
+        </button>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class="btn-secondary"
+            onclick={saveTmdbAndTest}
+            disabled={tmdbSaving || !tmdbToken}
+          >
+            {#if tmdbSaving}
+              <Loader2 class="h-3.5 w-3.5 animate-spin" />
+            {/if}
+            Save & test
+          </button>
+          <button
+            type="button"
+            class="btn-primary"
+            onclick={() => (step = "done")}
+          >
+            Continue <ChevronRight class="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   {/if}

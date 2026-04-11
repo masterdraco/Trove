@@ -18,7 +18,8 @@
     Sparkles,
     LogOut,
     Rss,
-    BookOpen
+    BookOpen,
+    TrendingUp
   } from "lucide-svelte";
 
   let booting = $state(true);
@@ -30,6 +31,7 @@
 
   const nav = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400" },
+    { href: "/discover", label: "Discover", icon: TrendingUp, color: "text-rose-400" },
     { href: "/search", label: "Search", icon: Search, color: "text-cyan-400" },
     { href: "/indexers", label: "Indexers", icon: Database, color: "text-blue-400" },
     { href: "/feeds", label: "Feeds", icon: Rss, color: "text-orange-400" },

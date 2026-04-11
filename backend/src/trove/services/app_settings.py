@@ -104,6 +104,18 @@ REGISTRY: dict[str, SettingSpec] = {
         min_value=0,
         max_value=100,
     ),
+    "tmdb.api_token": SettingSpec(
+        key="tmdb.api_token",
+        type="str",
+        default="",
+        label="TMDB API read token",
+        description=(
+            "Bearer token from your TMDB account (v4 read access token). Get one for free at "
+            "https://www.themoviedb.org/settings/api — required for the Discover page and "
+            "poster-rich watchlist. Leave blank to disable."
+        ),
+        group="tmdb",
+    ),
 }
 
 

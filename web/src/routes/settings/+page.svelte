@@ -14,7 +14,9 @@
     Download,
     Upload,
     Archive,
-    AlertTriangle
+    AlertTriangle,
+    TrendingUp,
+    ExternalLink
   } from "lucide-svelte";
 
   type AppSetting = Awaited<ReturnType<typeof api.appSettings.list>>[number];
@@ -92,8 +94,8 @@
   function groupedSettings(): Record<string, AppSetting[]> {
     const grouped: Record<string, AppSetting[]> = {};
     for (const s of settings) {
-      // AI settings get their own dedicated panel below
-      if (s.group === "ai") continue;
+      // AI and TMDB settings get their own dedicated panels below
+      if (s.group === "ai" || s.group === "tmdb") continue;
       (grouped[s.group] ??= []).push(s);
     }
     return grouped;
@@ -105,9 +107,42 @@
         rss: "RSS Feeds",
         search: "Search",
         ai: "AI",
+        tmdb: "TMDB",
         general: "General"
       }[group] ?? group
     );
+  }
+
+  let tmdbTesting = $state(false);
+  let tmdbResult = $state<{ ok: boolean; message: string } | null>(null);
+
+  async function runTmdbTest() {
+    // Save any pending TMDB changes first so the test uses the new token
+    if (draft["tmdb.api_token"] !== (settings.find((s) => s.key === "tmdb.api_token")?.value ?? "")) {
+      try {
+        await api.appSettings.update({ "tmdb.api_token": draft["tmdb.api_token"] });
+        await loadSettings();
+      } catch (e) {
+        tmdbResult = {
+          ok: false,
+          message: (e as { detail?: string }).detail ?? "failed to save token"
+        };
+        return;
+      }
+    }
+    tmdbTesting = true;
+    tmdbResult = null;
+    try {
+      const r = await api.discover.test();
+      tmdbResult = {
+        ok: r.ok,
+        message: r.ok ? `Connected · image base: ${r.image_base ?? "default"}` : (r.message ?? "failed")
+      };
+    } catch (e) {
+      tmdbResult = { ok: false, message: (e as { detail?: string }).detail ?? "failed" };
+    } finally {
+      tmdbTesting = false;
+    }
   }
 
   let restoreFile = $state<File | null>(null);
@@ -541,6 +576,93 @@
             Save AI settings
           </button>
         </div>
+      {/if}
+    </div>
+  </div>
+
+  <div class="surface relative overflow-hidden p-6">
+    <div class="absolute inset-0 bg-gradient-to-br from-rose-500/10 via-transparent to-primary/10"></div>
+    <div class="relative">
+      <div class="flex items-start justify-between">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/20 text-rose-400">
+            <TrendingUp class="h-5 w-5" />
+          </div>
+          <div>
+            <h3 class="text-base font-semibold">TMDB (Discover)</h3>
+            <p class="text-xs text-muted-foreground">
+              Powers the Discover page and poster-rich watchlist.
+            </p>
+          </div>
+        </div>
+        <button class="btn-secondary" onclick={runTmdbTest} disabled={tmdbTesting}>
+          {#if tmdbTesting}
+            <Loader2 class="h-3.5 w-3.5 animate-spin" />
+          {:else if tmdbResult?.ok}
+            <CheckCircle2 class="h-3.5 w-3.5 text-success" />
+          {:else if tmdbResult && !tmdbResult.ok}
+            <XCircle class="h-3.5 w-3.5 text-destructive" />
+          {/if}
+          Test connection
+        </button>
+      </div>
+
+      {#if tmdbResult}
+        <div
+          class="mt-4 rounded-xl border px-3 py-2 text-xs {tmdbResult.ok
+            ? 'border-success/30 bg-success/10 text-success'
+            : 'border-destructive/30 bg-destructive/10 text-destructive'}"
+        >
+          {tmdbResult.message}
+        </div>
+      {/if}
+
+      {#if !settingsLoading}
+        {@const tokenSpec = settings.find((s) => s.key === "tmdb.api_token")}
+        {#if tokenSpec}
+          <div class="mt-5 space-y-3">
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-medium">API read token</span>
+              <input
+                type="password"
+                value={(draft["tmdb.api_token"] as string) ?? ""}
+                oninput={(e) => (draft["tmdb.api_token"] = (e.currentTarget as HTMLInputElement).value)}
+                placeholder="eyJhbGciOi..."
+                class="input-base font-mono text-xs"
+              />
+              <div class="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                Get a free token at
+                <a
+                  href="https://www.themoviedb.org/settings/api"
+                  target="_blank"
+                  rel="noopener"
+                  class="inline-flex items-center gap-0.5 text-primary hover:underline"
+                >
+                  themoviedb.org/settings/api <ExternalLink class="h-2.5 w-2.5" />
+                </a>
+                — look for "API Read Access Token" (v4).
+              </div>
+            </label>
+          </div>
+
+          <div class="mt-4 flex items-center justify-between">
+            <div class="text-xs text-muted-foreground">
+              Leave blank to disable Discover.
+            </div>
+            <button
+              class="btn-primary"
+              onclick={saveSettings}
+              disabled={settingsSaving || !isDirty()}
+            >
+              {#if settingsSaving}
+                <Loader2 class="h-3.5 w-3.5 animate-spin" />
+              {:else}
+                <Save class="h-3.5 w-3.5" />
+              {/if}
+              Save TMDB settings
+            </button>
+          </div>
+        {/if}
       {/if}
     </div>
   </div>
