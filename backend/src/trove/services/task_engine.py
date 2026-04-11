@@ -255,6 +255,21 @@ def _pass_filter(hit: search_service.SearchHit, filters: dict[str, Any]) -> tupl
             if isinstance(token, str) and token.lower() not in title_lower:
                 return False, f"missing:{token}"
 
+    # Strict show/movie title prefix match. Used by watchlist-promoted
+    # tasks to keep "The Boys" from grabbing every Fringe/Criminal Minds
+    # episode whose episode title happens to contain "The Boy(s)".
+    require_title = filters.get("require_title")
+    if isinstance(require_title, str) and require_title.strip():
+        import re
+
+        def _toks(s: str) -> list[str]:
+            return [t for t in re.split(r"[^a-z0-9]+", s.lower()) if t]
+
+        wanted = _toks(require_title)
+        actual = _toks(hit.title)
+        if wanted and actual[: len(wanted)] != wanted:
+            return False, f"title!^={require_title}"
+
     return True, "ok"
 
 
@@ -357,9 +372,22 @@ async def run_task(
                         category_values.append(Category(c))
                     except ValueError:
                         continue
-                logger.write(f"search: {query} (cats={category_values})\n")
+                tmdb_id_raw = input_spec.get("tmdb_id")
+                tmdb_id = str(tmdb_id_raw) if tmdb_id_raw not in (None, "") else None
+                imdb_id_raw = input_spec.get("imdb_id")
+                imdb_id = str(imdb_id_raw) if imdb_id_raw not in (None, "") else None
+                extras = ""
+                if tmdb_id:
+                    extras += f" tmdb={tmdb_id}"
+                if imdb_id:
+                    extras += f" imdb={imdb_id}"
+                logger.write(f"search: {query} (cats={category_values}{extras})\n")
                 response = await search_service.run_search(
-                    session, query, categories=category_values
+                    session,
+                    query,
+                    categories=category_values,
+                    tmdb_id=tmdb_id,
+                    imdb_id=imdb_id,
                 )
                 logger.write(
                     f"  got {len(response.hits)} hits in {response.elapsed_ms}ms "

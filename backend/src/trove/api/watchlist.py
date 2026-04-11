@@ -305,7 +305,12 @@ async def promote_item(
 
     if row.kind == "series":
         task_name = ai_agent._slugify(row.title)
-        config_yaml = ai_agent._build_series_task_yaml(row.title, row.target_quality, output_names)
+        config_yaml = ai_agent._build_series_task_yaml(
+            row.title,
+            row.target_quality,
+            output_names,
+            tmdb_id=row.tmdb_id,
+        )
         schedule_cron = "0 * * * *"
     else:
         slug_parts = [row.title]
@@ -313,7 +318,11 @@ async def promote_item(
             slug_parts.append(str(row.year))
         task_name = ai_agent._slugify("-".join(slug_parts))
         config_yaml = ai_agent._build_movie_task_yaml(
-            row.title, row.year, row.target_quality, output_names
+            row.title,
+            row.year,
+            row.target_quality,
+            output_names,
+            tmdb_id=row.tmdb_id,
         )
         schedule_cron = "0 */2 * * *"
 

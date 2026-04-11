@@ -209,6 +209,8 @@ async def run_search(
     max_size_mb: int | None = None,
     limit: int = 100,
     timeout_per_indexer: float = 15.0,
+    tmdb_id: str | None = None,
+    imdb_id: str | None = None,
 ) -> SearchResponse:
     start = time.monotonic()
     rows = session.exec(
@@ -228,7 +230,13 @@ async def run_search(
         try:
             async with asyncio.timeout(timeout_per_indexer):
                 releases = await driver.search(
-                    SearchQuery(terms=query, categories=categories or [], limit=limit)
+                    SearchQuery(
+                        terms=query,
+                        categories=categories or [],
+                        limit=limit,
+                        tmdb_id=tmdb_id,
+                        imdb_id=imdb_id,
+                    )
                 )
             return row.name, releases
         except (IndexerError, TimeoutError, asyncio.TimeoutError) as e:  # noqa: UP041

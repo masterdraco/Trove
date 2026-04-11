@@ -196,25 +196,36 @@ def _build_series_task_yaml(
     title: str,
     quality: str | None,
     output_clients: list[str],
+    *,
+    tmdb_id: int | None = None,
+    imdb_id: str | None = None,
 ) -> str:
     reject = ["cam", "telesync", "hdcam", "workprint"]
     filters: dict[str, Any] = {
         "min_seeders": 2,
         "reject": reject,
+        # Strict show-name prefix filter — keeps "The Boys" from grabbing
+        # every Fringe / Criminal Minds episode whose episode title
+        # happens to contain "The Boy(s)". Indexers that honor tmdbid
+        # filter at the source; this is the fallback for the rest.
+        "require_title": title,
     }
     if quality and quality != "any":
         # Soft preference — ranking boost, not a hard filter. If the
         # desired quality isn't available, the engine still grabs the
         # best thing it can find.
         filters["prefer_quality"] = quality
+    input_spec: dict[str, Any] = {
+        "kind": "search",
+        "query": title,
+        "categories": ["tv"],
+    }
+    if tmdb_id:
+        input_spec["tmdb_id"] = int(tmdb_id)
+    if imdb_id:
+        input_spec["imdb_id"] = str(imdb_id)
     config: dict[str, Any] = {
-        "inputs": [
-            {
-                "kind": "search",
-                "query": title,
-                "categories": ["tv"],
-            }
-        ],
+        "inputs": [input_spec],
         "filters": filters,
         "outputs": list(output_clients),
     }
@@ -226,22 +237,29 @@ def _build_movie_task_yaml(
     year: int | None,
     quality: str | None,
     output_clients: list[str],
+    *,
+    tmdb_id: int | None = None,
+    imdb_id: str | None = None,
 ) -> str:
     query = f"{title} {year}" if year else title
     filters: dict[str, Any] = {
         "min_seeders": 5,
         "reject": ["cam", "telesync", "hdcam", "workprint", "hdts"],
+        "require_title": title,
     }
     if quality and quality != "any":
         filters["prefer_quality"] = quality
+    input_spec: dict[str, Any] = {
+        "kind": "search",
+        "query": query,
+        "categories": ["movies"],
+    }
+    if tmdb_id:
+        input_spec["tmdb_id"] = int(tmdb_id)
+    if imdb_id:
+        input_spec["imdb_id"] = str(imdb_id)
     config: dict[str, Any] = {
-        "inputs": [
-            {
-                "kind": "search",
-                "query": query,
-                "categories": ["movies"],
-            }
-        ],
+        "inputs": [input_spec],
         "filters": filters,
         "outputs": list(output_clients),
     }
