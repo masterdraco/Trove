@@ -1,0 +1,25 @@
+services:
+  trove:
+    build: .
+    image: trove:latest
+    container_name: trove
+    # Port 8000 is published on all host interfaces, so Trove is
+    # reachable from any device on your LAN at http://<host-ip>:8000.
+    # Replace "8000:8000" with e.g. "192.168.0.50:8000:8000" to bind to
+    # a specific interface only.
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    environment:
+      - TZ=Europe/Copenhagen
+      - TROVE_CONFIG_DIR=/config
+      - TROVE_DATA_DIR=/data
+      # Point this at your Ollama server. Use host.docker.internal on
+      # Docker Desktop, or the host LAN IP when running on Linux.
+      - TROVE_AI_ENDPOINT=http://host.docker.internal:11434
+      - TROVE_AI_MODEL=ollama/gemma4:latest
+      # A random session secret is generated on first run and persisted
+      # to ./config/session.secret. Back up that file together with the DB.
+    restart: unless-stopped

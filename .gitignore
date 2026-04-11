@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg
+
+# uv
+.venv/
+uv.lock.local
+
+# Node
+node_modules/
+.pnpm-store/
+.svelte-kit/
+/web/build/
+/web/dist/
+/web/.env
+/web/.env.*
+!/web/.env.example
+
+# Trove runtime
+/config/
+/data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.db.backup
+session.secret
+
+# SPA build artifact copied into the backend package
+/backend/src/trove/static/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/

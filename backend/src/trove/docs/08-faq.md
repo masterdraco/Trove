@@ -1,0 +1,91 @@
+---
+title: FAQ & Troubleshooting
+order: 8
+description: Common issues, gotchas, and how to debug them.
+---
+
+# FAQ & Troubleshooting
+
+## Where does Trove store data?
+
+- **Database**: `config/trove.db` — SQLite, WAL-mode. Contains users, clients, indexers, feeds, cached RSS items, tasks, task run history, watchlist, AI cache, settings
+- **Session secret**: `config/session.secret` — 48-byte random token generated on first run, used for session cookies AND credential encryption
+- **Working data**: `data/` — temporary torrent/NZB files during processing
+
+Back up the entire `config/` directory and you can restore a complete Trove install anywhere.
+
+## I changed the AI model and chat still uses the old one
+
+The effective AI config is read from the `app_setting` table. Save your changes in `/settings` → AI Assistant panel (click the **Save AI settings** button at the bottom of the panel). Refresh the `/ai` page and the header should show the new model name.
+
+If it still doesn't work, your environment variables may be overriding the DB. Check `docker-compose.yml` for `TROVE_AI_MODEL=...` and remove it — env vars take priority for the `ai_enabled` flag only.
+
+## My Transmission client works in the browser but Trove can't reach it
+
+Most likely causes in order:
+
+1. **Wrong URL** — Trove wants the web-interface URL, e.g. `http://192.168.0.10:9091`. Not the torrent-listen port (51413), not with a trailing `/transmission/rpc` (Trove appends that itself)
+2. **RPC auth mismatch** — if you have `rpc-authentication-required: true` in settings.json, you need both username AND password in Trove
+3. **RPC whitelist** — Transmission has an `rpc-whitelist` of allowed IPs. Either add Trove's host or set `rpc-whitelist-enabled: false`
+4. **Firewall** — confirm the port is reachable: `curl http://<host>:9091` from the Trove host
+
+## Task runs but accepts 0 releases every time
+
+Turn on **Dry run** mode and expand the log in `/history` or on the task's detail panel. You'll see one line per release explaining *why* it was filtered out. Common reasons:
+
+- `seeders<3` — your `min_seeders` is too high
+- `no year in title` — the release title doesn't contain a 4-digit year and you have a `year_min` filter
+- `kind:not-movie` — the release looks like a TV episode (has SxxExx) but `kind: movie` is set
+- `missing:1080p` — the release title doesn't contain "1080p"
+- `reject:cam` — the title contains a rejected token
+
+Adjust the filters and dry-run again until accepted count is > 0.
+
+## "Empty response" when testing an indexer
+
+The URL is probably wrong. Common mistakes:
+
+- Including `/api` twice (Trove appends `/api` automatically, except when the URL already ends with `/api`)
+- Pointing at a web UI page instead of the API root
+- Using `http://` when the indexer requires HTTPS (Trove follows redirects but some indexers just return empty body on plain HTTP)
+
+Sanity check: `curl 'https://api.example.com/api?t=caps&apikey=YOUR_KEY'` — it should return XML starting with `<?xml`. If it returns HTML or is empty, your URL is wrong.
+
+## I see the onboarding wizard every time I log in
+
+Probably means `flexreplace_onboarding_dismissed` / `trove_onboarding_dismissed` isn't being saved to localStorage. Check if your browser is blocking storage for the origin, or in private-browsing mode.
+
+To force-dismiss, open DevTools → Application → Local Storage → set `trove_onboarding_dismissed` to `"1"`.
+
+## Scheduler runs tasks but the AI chat is broken
+
+AI and scheduler are independent. If the AI test button fails but tasks still run, it means:
+
+- Ollama is unreachable (wrong endpoint, server down, model not installed)
+- The `ai.enabled` setting is off
+- The `TROVE_AI_ENABLED=false` env var is set (overrides DB)
+
+Go to `/settings` → AI Assistant → click **Test connection**. The error message tells you exactly what litellm sees.
+
+## Docker container keeps restarting
+
+Check logs: `docker compose logs -f trove`. Most common startup errors:
+
+- **Database migration failed** — usually from a mid-upgrade crash. Back up `config/trove.db`, then run `docker compose run --rm trove uv run alembic upgrade head` to manually apply migrations
+- **Port already in use** — another service is on 8000. Change the `ports:` mapping in compose
+- **Permission denied on /config** — volume mount permissions. Make sure the host `config/` directory is writable by the container user
+
+## How do I back up and restore?
+
+Back up the whole `config/` directory — it contains everything. To restore on a new host:
+
+1. Stop the Trove container on the new host if running
+2. Copy `config/` over (preserve permissions on `session.secret` — should be 600)
+3. Start the container
+4. All clients, indexers, feeds, tasks, and settings are restored automatically
+
+The `data/` directory is transient — no need to back it up.
+
+## My torrent client doesn't have a "category" but Trove keeps sending empty category
+
+Harmless. Categories are a SABnzbd / NZBGet concept. For Transmission and Deluge they map to labels if the label plugin is installed; otherwise they're silently ignored.

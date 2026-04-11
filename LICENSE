@@ -1,0 +1,11 @@
+Trove is licensed under the GNU General Public License v3.0 or later.
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+The full license text should be placed in this file. Fetch it with:
+
+    curl -o LICENSE https://www.gnu.org/licenses/gpl-3.0.txt
+
+Until then, this file serves as a placeholder notice. The project's
+intent and obligations are those of GPL-3.0-or-later as published by
+the Free Software Foundation.
