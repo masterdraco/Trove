@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from trove.api.deps import current_user, db_session
-from trove.models.task import TaskRow, TaskRunRow
+from trove.models.task import SeenReleaseRow, TaskRow, TaskRunRow
 from trove.models.user import User
 from trove.services import scheduler, task_engine
 
@@ -139,6 +139,14 @@ async def delete_task(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     scheduler.unschedule_task(task_id)
+    # Cascade manually — task_run / seen_release have FKs to task with no
+    # ON DELETE CASCADE, and SQLite has FK enforcement enabled.
+    for child in session.exec(
+        select(SeenReleaseRow).where(SeenReleaseRow.task_id == task_id)
+    ).all():
+        session.delete(child)
+    for child in session.exec(select(TaskRunRow).where(TaskRunRow.task_id == task_id)).all():
+        session.delete(child)
     session.delete(row)
     session.commit()
 
