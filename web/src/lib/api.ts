@@ -141,6 +141,19 @@ export type WatchlistItem = {
   last_download_at: string | null;
 };
 
+export type WatchlistCandidate = {
+  title: string;
+  protocol: "torrent" | "usenet";
+  size: number | null;
+  seeders: number | null;
+  source: string;
+  category: string | null;
+  download_url: string;
+  infohash: string | null;
+  published_at: string | null;
+  score: number;
+};
+
 export type TaskOut = {
   id: number;
   name: string;
@@ -534,7 +547,20 @@ export const api = {
         message: string;
       }>(`/api/watchlist/${id}/promote`, { method: "POST" }),
     unpromote: (id: number) =>
-      request<WatchlistItem>(`/api/watchlist/${id}/unpromote`, { method: "POST" })
+      request<WatchlistItem>(`/api/watchlist/${id}/unpromote`, { method: "POST" }),
+    candidates: (id: number) =>
+      request<WatchlistCandidate[]>(`/api/watchlist/${id}/candidates`),
+    grab: (id: number, payload: {
+      title: string;
+      protocol: "torrent" | "usenet";
+      download_url: string;
+      size?: number | null;
+      infohash?: string | null;
+    }) =>
+      request<{ ok: boolean; client: string | null; message: string }>(
+        `/api/watchlist/${id}/grab`,
+        { method: "POST", body: JSON.stringify(payload) }
+      )
   },
 
   ai: {

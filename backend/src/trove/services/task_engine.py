@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -40,6 +41,92 @@ def parse_task_config(config_yaml: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("task config must be a YAML mapping")
     return data
+
+
+_QUALITY_TIERS: dict[str, int] = {
+    "2160p": 4,
+    "4k": 4,
+    "uhd": 4,
+    "1080p": 3,
+    "720p": 2,
+    "576p": 1,
+    "480p": 1,
+    "sd": 1,
+}
+_SOURCE_TIERS: dict[str, int] = {
+    "remux": 6,
+    "bluray": 5,
+    "blu-ray": 5,
+    "bdrip": 4,
+    "web-dl": 4,
+    "webdl": 4,
+    "webrip": 3,
+    "hdtv": 2,
+    "dvdrip": 1,
+    "hdts": -5,
+    "telesync": -5,
+    "cam": -10,
+}
+_CODEC_BONUS: dict[str, int] = {
+    "x265": 2,
+    "h265": 2,
+    "h.265": 2,
+    "hevc": 2,
+    "x264": 1,
+    "h264": 1,
+}
+
+
+def _match_tier(title_lower: str, table: dict[str, int]) -> int:
+    best = 0
+    for key, value in table.items():
+        if key in title_lower and (value > best or best == 0):
+            best = value
+    return best
+
+
+def score_hit(
+    hit: search_service.SearchHit,
+    *,
+    prefer_quality: str | None = None,
+    max_size_mb: int | None = None,
+) -> float:
+    """Rank a search hit. Higher is better. Used to sort candidates so
+    the task engine picks the best one that also passes the hard filters.
+    """
+    title = hit.title.lower()
+    score = 0.0
+
+    # Quality tier (2160 > 1080 > 720 …)
+    score += _match_tier(title, _QUALITY_TIERS) * 100
+
+    # Preferred quality gets a soft bonus so it wins when available, but
+    # does NOT disqualify lower qualities if nothing else matches.
+    if prefer_quality and prefer_quality.lower() in title:
+        score += 500
+
+    # Source — BluRay/Remux > WEB-DL > HDTV > DVD > CAM/TS
+    score += _match_tier(title, _SOURCE_TIERS) * 30
+
+    # Codec — x265/HEVC preferred
+    best_codec = 0
+    for codec, bonus in _CODEC_BONUS.items():
+        if codec in title:
+            best_codec = max(best_codec, bonus)
+    score += best_codec * 10
+
+    # Size — slight bonus for bigger (proxy for quality) but only up to
+    # max_size_mb. Hard filter handles the over-size case.
+    if hit.size and max_size_mb and max_size_mb > 0:
+        size_mb = hit.size / (1024 * 1024)
+        ratio = min(size_mb / max_size_mb, 1.0)
+        score += ratio * 20
+
+    # Health — seeders for torrents, published recency isn't worth much
+    if hit.protocol is Protocol.TORRENT and hit.seeders:
+        score += math.log1p(hit.seeders) * 5
+
+    return score
 
 
 def _seen_key(release: search_service.SearchHit) -> str:
@@ -305,6 +392,26 @@ async def run_task(
             else:
                 logger.write(f"skip unsupported input kind: {kind}\n")
                 continue
+
+            # Rank hits so the first one that passes filters is the best
+            # available, not just the first one the indexer returned.
+            prefer_quality = filters.get("prefer_quality")
+            max_size_mb_cfg = (
+                filters.get("max_size_mb") if isinstance(filters.get("max_size_mb"), int) else None
+            )
+            prefer_quality_str = (
+                str(prefer_quality).strip()
+                if isinstance(prefer_quality, str) and prefer_quality
+                else None
+            )
+            hits.sort(
+                key=lambda h: score_hit(
+                    h,
+                    prefer_quality=prefer_quality_str,
+                    max_size_mb=max_size_mb_cfg,
+                ),
+                reverse=True,
+            )
 
             for hit in hits:
                 considered += 1

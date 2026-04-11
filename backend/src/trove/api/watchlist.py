@@ -8,10 +8,22 @@ from sqlmodel import Session, select
 
 from trove.ai import agent as ai_agent
 from trove.api.deps import current_user, db_session
+from trove.clients.base import (
+    AddOptions,
+    ClientError,
+    ClientType,
+    Protocol,
+    Release,
+    TorrentClient,
+    UsenetClient,
+)
+from trove.indexers.base import Category
+from trove.models.client import Client
 from trove.models.task import SeenReleaseRow, TaskRow
 from trove.models.user import User
 from trove.models.watchlist import WatchlistItemRow
-from trove.services import scheduler
+from trove.services import client_registry, scheduler, search_service
+from trove.services.task_engine import score_hit
 
 router = APIRouter()
 
@@ -312,6 +324,182 @@ async def promote_item(
         task_id=task.id,
         message=f"Created task '{task_name}' — running now",
     )
+
+
+class CandidateOut(BaseModel):
+    title: str
+    protocol: str
+    size: int | None
+    seeders: int | None
+    source: str
+    category: str | None
+    download_url: str
+    infohash: str | None
+    published_at: str | None
+    score: float
+
+
+class GrabRequest(BaseModel):
+    title: str
+    protocol: str = Field(pattern="^(torrent|usenet)$")
+    download_url: str
+    size: int | None = None
+    infohash: str | None = None
+
+
+class GrabResponse(BaseModel):
+    ok: bool
+    client: str | None
+    message: str
+
+
+@router.get("/{item_id}/candidates", response_model=list[CandidateOut])
+async def list_candidates(
+    item_id: int,
+    session: Session = Depends(db_session),
+    _user: User = Depends(current_user),
+) -> list[CandidateOut]:
+    """Run a one-off search for this watchlist item and return the top
+    ranked candidates so the user can pick a specific release."""
+    row = session.get(WatchlistItemRow, item_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+
+    query = row.title
+    if row.kind == "movie" and row.year:
+        query = f"{row.title} {row.year}"
+    categories = [Category.MOVIES] if row.kind == "movie" else [Category.TV]
+
+    response = await search_service.run_search(session, query, categories=categories, limit=60)
+    hits = sorted(
+        response.hits,
+        key=lambda h: score_hit(h, prefer_quality=row.target_quality),
+        reverse=True,
+    )[:30]
+    return [
+        CandidateOut(
+            title=h.title,
+            protocol=h.protocol.value,
+            size=h.size,
+            seeders=h.seeders,
+            source=h.source,
+            category=h.category,
+            download_url=h.download_url or "",
+            infohash=h.infohash,
+            published_at=h.published_at,
+            score=round(score_hit(h, prefer_quality=row.target_quality), 1),
+        )
+        for h in hits
+        if h.download_url
+    ]
+
+
+@router.post("/{item_id}/grab", response_model=GrabResponse)
+async def grab_release(
+    item_id: int,
+    payload: GrabRequest,
+    session: Session = Depends(db_session),
+    _user: User = Depends(current_user),
+) -> GrabResponse:
+    """Send a specific release to the first matching-protocol client.
+
+    Used by the watchlist picker so the user can hand-pick a version.
+    Records a SeenReleaseRow against the backing task (if any) so the
+    same release doesn't get re-grabbed by the scheduled run.
+    """
+    row = session.get(WatchlistItemRow, item_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+
+    try:
+        protocol = Protocol(payload.protocol)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_protocol"
+        ) from e
+
+    clients = session.exec(select(Client).where(Client.enabled)).all()  # type: ignore[arg-type]
+    target: Client | None = None
+    for c in clients:
+        if ClientType(c.type).protocol is protocol:
+            target = c
+            break
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"no_{payload.protocol}_client_configured",
+        )
+
+    try:
+        driver = client_registry.build_driver(target)
+    except ClientError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)) from e
+
+    release = Release(
+        title=payload.title,
+        protocol=protocol,
+        download_url=payload.download_url,
+        size=payload.size,
+        infohash=payload.infohash,
+    )
+    options = AddOptions(
+        category=target.default_category,
+        save_path=target.default_save_path,
+    )
+    try:
+        if protocol is Protocol.TORRENT:
+            assert isinstance(driver, TorrentClient)
+            result = await driver.add_torrent(release, options)
+        else:
+            assert isinstance(driver, UsenetClient)
+            result = await driver.add_nzb(release, options)
+    except ClientError as e:
+        await driver.close()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)) from e
+    await driver.close()
+
+    if not result.ok:
+        return GrabResponse(
+            ok=False,
+            client=target.name,
+            message=result.message or "client rejected the release",
+        )
+
+    # Record as sent on the backing task (if one exists) so the scheduler
+    # doesn't re-grab this episode/movie on its next run.
+    if row.discovery_task_id is not None:
+        from trove.services.task_engine import _seen_key  # local import to avoid cycles
+
+        fake_hit = search_service.SearchHit(
+            title=payload.title,
+            protocol=protocol,
+            size=payload.size,
+            seeders=None,
+            leechers=None,
+            download_url=payload.download_url,
+            infohash=payload.infohash,
+            category=None,
+            source="watchlist-pick",
+            score=0.0,
+            published_at=None,
+        )
+        seen = SeenReleaseRow(
+            task_id=row.discovery_task_id,
+            key=_seen_key(fake_hit),
+            title=payload.title,
+            outcome="sent",
+            reason=f"manual pick via watchlist → {target.name}",
+        )
+        session.add(seen)
+        session.commit()
+
+    # Movies flip to 'downloaded' immediately after a successful grab
+    if row.kind == "movie":
+        row.discovery_status = "downloaded"
+        session.add(row)
+        session.commit()
+
+    return GrabResponse(ok=True, client=target.name, message=result.message or "sent")
 
 
 @router.post("/{item_id}/unpromote", response_model=WatchlistOut)

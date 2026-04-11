@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type WatchlistItem } from "$lib/api";
+  import { api, type WatchlistItem, type WatchlistCandidate } from "$lib/api";
   import {
     Plus,
     Trash2,
@@ -12,7 +12,9 @@
     X,
     TrendingUp,
     CheckCircle2,
-    Tv
+    Tv,
+    ListOrdered,
+    Download
   } from "lucide-svelte";
 
   let items = $state<WatchlistItem[]>([]);
@@ -21,6 +23,10 @@
 
   let busyId = $state<number | null>(null);
   let detailItem = $state<WatchlistItem | null>(null);
+  let candidates = $state<WatchlistCandidate[] | null>(null);
+  let candidatesLoading = $state(false);
+  let candidatesError = $state<string | null>(null);
+  let grabbingUrl = $state<string | null>(null);
 
   let form = $state({
     kind: "series" as "series" | "movie",
@@ -128,10 +134,59 @@
 
   function openDetail(item: WatchlistItem) {
     detailItem = item;
+    candidates = null;
+    candidatesError = null;
   }
 
   function closeDetail() {
     detailItem = null;
+    candidates = null;
+    candidatesError = null;
+  }
+
+  async function loadCandidates(item: WatchlistItem) {
+    candidatesLoading = true;
+    candidatesError = null;
+    try {
+      candidates = await api.watchlist.candidates(item.id);
+    } catch (e) {
+      candidatesError = (e as { detail?: string }).detail ?? "Search failed";
+    } finally {
+      candidatesLoading = false;
+    }
+  }
+
+  async function grabCandidate(item: WatchlistItem, c: WatchlistCandidate) {
+    grabbingUrl = c.download_url;
+    try {
+      const r = await api.watchlist.grab(item.id, {
+        title: c.title,
+        protocol: c.protocol,
+        download_url: c.download_url,
+        size: c.size,
+        infohash: c.infohash
+      });
+      if (!r.ok) {
+        alert(`Grab failed: ${r.message}`);
+      } else {
+        alert(`Sent to ${r.client}`);
+        await load();
+        if (detailItem?.id === item.id) {
+          detailItem = items.find((i) => i.id === item.id) ?? null;
+        }
+      }
+    } catch (e) {
+      alert((e as { detail?: string }).detail ?? "Grab failed");
+    } finally {
+      grabbingUrl = null;
+    }
+  }
+
+  function formatSize(bytes: number | null): string {
+    if (!bytes) return "—";
+    const gb = bytes / (1024 * 1024 * 1024);
+    if (gb >= 1) return `${gb.toFixed(1)} GB`;
+    return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
   }
 </script>
 
@@ -416,11 +471,79 @@
                 Start auto-download
               </button>
             {/if}
+            <button
+              class="btn-secondary"
+              onclick={() => loadCandidates(item)}
+              disabled={candidatesLoading}
+            >
+              {#if candidatesLoading}
+                <Loader2 class="h-3.5 w-3.5 animate-spin" />
+              {:else}
+                <ListOrdered class="h-3.5 w-3.5" />
+              {/if}
+              Pick release
+            </button>
             <button class="btn-secondary text-destructive" onclick={() => remove(item)}>
               <Trash2 class="h-3.5 w-3.5" />
               Remove
             </button>
           </div>
+
+          {#if candidatesError}
+            <div class="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {candidatesError}
+            </div>
+          {/if}
+          {#if candidates !== null}
+            <div class="mt-5">
+              <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Candidates ({candidates.length})
+              </div>
+              {#if candidates.length === 0}
+                <div class="rounded-xl border border-dashed border-border bg-background/40 p-4 text-center text-xs text-muted-foreground">
+                  No releases found.
+                </div>
+              {:else}
+                <div class="max-h-96 overflow-y-auto rounded-xl border border-border bg-background/40">
+                  {#each candidates as c, i (c.download_url)}
+                    <div class="flex items-start gap-3 border-b border-border/40 p-3 text-xs last:border-b-0 hover:bg-muted/20">
+                      <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 font-mono text-[10px] font-semibold text-primary">
+                        {i + 1}
+                      </div>
+                      <div class="min-w-0 flex-1">
+                        <div class="break-all font-mono text-[11px] text-foreground">
+                          {c.title}
+                        </div>
+                        <div class="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                          <span class="rounded bg-muted/40 px-1.5 py-0.5 font-medium uppercase">
+                            {c.protocol}
+                          </span>
+                          <span>{formatSize(c.size)}</span>
+                          {#if c.seeders !== null}
+                            <span>· {c.seeders} seeders</span>
+                          {/if}
+                          <span>· {c.source}</span>
+                          <span class="ml-auto text-primary">score {c.score}</span>
+                        </div>
+                      </div>
+                      <button
+                        class="btn-primary shrink-0 self-center"
+                        onclick={() => grabCandidate(item, c)}
+                        disabled={grabbingUrl !== null}
+                      >
+                        {#if grabbingUrl === c.download_url}
+                          <Loader2 class="h-3 w-3 animate-spin" />
+                        {:else}
+                          <Download class="h-3 w-3" />
+                        {/if}
+                        Grab
+                      </button>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
         </div>
       </div>
     </div>

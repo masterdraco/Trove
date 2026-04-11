@@ -197,10 +197,16 @@ def _build_series_task_yaml(
     quality: str | None,
     output_clients: list[str],
 ) -> str:
-    require: list[str] = []
-    if quality and quality != "any":
-        require.append(quality)
     reject = ["cam", "telesync", "hdcam", "workprint"]
+    filters: dict[str, Any] = {
+        "min_seeders": 2,
+        "reject": reject,
+    }
+    if quality and quality != "any":
+        # Soft preference — ranking boost, not a hard filter. If the
+        # desired quality isn't available, the engine still grabs the
+        # best thing it can find.
+        filters["prefer_quality"] = quality
     config: dict[str, Any] = {
         "inputs": [
             {
@@ -209,14 +215,9 @@ def _build_series_task_yaml(
                 "categories": ["tv"],
             }
         ],
-        "filters": {
-            "min_seeders": 2,
-            "reject": reject,
-        },
+        "filters": filters,
         "outputs": list(output_clients),
     }
-    if require:
-        config["filters"]["require"] = require
     return yaml.safe_dump(config, sort_keys=False)
 
 
@@ -227,9 +228,12 @@ def _build_movie_task_yaml(
     output_clients: list[str],
 ) -> str:
     query = f"{title} {year}" if year else title
-    require: list[str] = []
+    filters: dict[str, Any] = {
+        "min_seeders": 5,
+        "reject": ["cam", "telesync", "hdcam", "workprint", "hdts"],
+    }
     if quality and quality != "any":
-        require.append(quality)
+        filters["prefer_quality"] = quality
     config: dict[str, Any] = {
         "inputs": [
             {
@@ -238,14 +242,9 @@ def _build_movie_task_yaml(
                 "categories": ["movies"],
             }
         ],
-        "filters": {
-            "min_seeders": 5,
-            "reject": ["cam", "telesync", "hdcam", "workprint", "hdts"],
-        },
+        "filters": filters,
         "outputs": list(output_clients),
     }
-    if require:
-        config["filters"]["require"] = require
     return yaml.safe_dump(config, sort_keys=False)
 
 
