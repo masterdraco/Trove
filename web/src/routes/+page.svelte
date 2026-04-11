@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { api } from "$lib/api";
   import {
     Database,
@@ -94,11 +94,22 @@
     }
   }
 
-  onMount(load);
+  let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  onMount(() => {
+    load();
+    refreshTimer = setInterval(load, 15000);
+  });
+
+  onDestroy(() => {
+    if (refreshTimer) clearInterval(refreshTimer);
+  });
 
   function formatTime(iso: string | null): string {
     if (!iso) return "never";
-    const d = new Date(iso);
+    // Backend stores naive UTC — append Z so Date parses as UTC not local.
+    const normalized = iso.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z";
+    const d = new Date(normalized);
     const diff = Date.now() - d.getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return "just now";
