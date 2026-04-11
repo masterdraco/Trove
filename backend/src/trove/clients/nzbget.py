@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import gzip
 from typing import Any
 
 import httpx
@@ -14,6 +15,11 @@ from trove.clients.base import (
     Release,
     UsenetClient,
 )
+
+
+def _looks_like_nzb(data: bytes) -> bool:
+    head = data.lstrip()[:512].lower()
+    return head.startswith(b"<?xml") or head.startswith(b"<nzb")
 
 
 class NzbgetClient(UsenetClient):
@@ -77,6 +83,32 @@ class NzbgetClient(UsenetClient):
                     categories.append(value)
         return categories
 
+    async def _fetch_nzb(self, url: str) -> bytes:
+        # Use a fresh client so we don't send NZBGet's Basic auth header to
+        # the indexer.
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as c:
+                resp = await c.get(url)
+        except httpx.HTTPError as e:
+            raise ClientError(f"nzbget: failed to fetch nzb: {e}") from e
+        if resp.status_code >= 400:
+            raise ClientError(f"nzbget: indexer returned HTTP {resp.status_code} for nzb url")
+        data = resp.content
+        # Some indexers serve .nzb.gz directly without Content-Encoding.
+        if data[:2] == b"\x1f\x8b":
+            try:
+                data = gzip.decompress(data)
+            except OSError as e:
+                raise ClientError(f"nzbget: failed to gunzip nzb: {e}") from e
+        if not _looks_like_nzb(data):
+            ctype = resp.headers.get("content-type", "?")
+            snippet = data[:120].decode("utf-8", "replace").strip()
+            raise ClientError(
+                f"nzbget: indexer did not return an nzb file "
+                f"(content-type={ctype}, starts with: {snippet!r})"
+            )
+        return data
+
     async def add_nzb(self, release: Release, options: AddOptions) -> AddResult:
         # NZBGet append signature:
         # append(NZBFilename, NZBContent, Category, Priority, AddToTop,
@@ -86,11 +118,25 @@ class NzbgetClient(UsenetClient):
         priority = options.priority if options.priority is not None else 0
 
         if release.content is not None:
-            nzb_content = base64.b64encode(release.content).decode("ascii")
+            raw = release.content
+            if raw[:2] == b"\x1f\x8b":
+                try:
+                    raw = gzip.decompress(raw)
+                except OSError as e:
+                    raise ClientError(f"nzbget: failed to gunzip nzb: {e}") from e
+            if not _looks_like_nzb(raw):
+                snippet = raw[:120].decode("utf-8", "replace").strip()
+                raise ClientError(
+                    f"nzbget: release.content is not an nzb file (starts with: {snippet!r})"
+                )
+            nzb_content = base64.b64encode(raw).decode("ascii")
         elif release.download_url and release.download_url.startswith(("http://", "https://")):
-            # NZBGet also accepts a URL as the "NZBContent" field when it
-            # starts with http/https.
-            nzb_content = release.download_url
+            # Fetch and validate ourselves rather than handing the URL to
+            # NZBGet — indexers often return HTML error pages on auth/quota
+            # failure, which NZBGet then chokes on with "xmlParseStartTag:
+            # invalid element name".
+            raw = await self._fetch_nzb(release.download_url)
+            nzb_content = base64.b64encode(raw).decode("ascii")
         else:
             raise ClientError("nzbget: release has no url/content")
 

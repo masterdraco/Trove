@@ -36,6 +36,8 @@ async def test_version_roundtrip() -> None:
 
 @pytest.mark.asyncio
 async def test_append_returns_id() -> None:
+    import base64
+
     client = NzbgetClient(BASE, username="u", password="p")
     captured: list[object] = []
 
@@ -43,6 +45,7 @@ async def test_append_returns_id() -> None:
         captured.extend(params)
         return 42
 
+    nzb_bytes = b'<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>'
     release = Release(
         title="Foo.S01",
         protocol=Protocol.USENET,
@@ -50,12 +53,61 @@ async def test_append_returns_id() -> None:
     )
     options = AddOptions(category="tv", priority=10)
     with respx.mock(assert_all_called=True) as mock:
+        mock.get("https://indexer.test/nzb/foo").mock(
+            return_value=httpx.Response(200, content=nzb_bytes)
+        )
         mock.post(RPC).mock(side_effect=_responder({"append": handle_append}))
         result = await client.add_nzb(release, options)
     assert result.ok is True
     assert result.identifier == "42"
+    assert captured[1] == base64.b64encode(nzb_bytes).decode("ascii")
     assert captured[2] == "tv"  # category
     assert captured[3] == 10  # priority
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_rejects_html_response() -> None:
+    from trove.clients.base import ClientError
+
+    client = NzbgetClient(BASE, username="u", password="p")
+    release = Release(
+        title="Foo.S01",
+        protocol=Protocol.USENET,
+        download_url="https://indexer.test/nzb/foo",
+    )
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get("https://indexer.test/nzb/foo").mock(
+            return_value=httpx.Response(
+                200,
+                content=b"<html><body>API limit reached</body></html>",
+                headers={"content-type": "text/html"},
+            )
+        )
+        with pytest.raises(ClientError, match="not return an nzb"):
+            await client.add_nzb(release, AddOptions())
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_accepts_gzipped_nzb() -> None:
+    import gzip
+
+    client = NzbgetClient(BASE, username="u", password="p")
+    nzb_bytes = b'<?xml version="1.0"?><nzb></nzb>'
+    gz = gzip.compress(nzb_bytes)
+    release = Release(
+        title="Foo.S01",
+        protocol=Protocol.USENET,
+        download_url="https://indexer.test/nzb/foo.nzb.gz",
+    )
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get("https://indexer.test/nzb/foo.nzb.gz").mock(
+            return_value=httpx.Response(200, content=gz)
+        )
+        mock.post(RPC).mock(side_effect=_responder({"append": lambda params: 7}))
+        result = await client.add_nzb(release, AddOptions())
+    assert result.ok is True
     await client.close()
 
 
