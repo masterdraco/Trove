@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import delete as sql_delete
 from sqlmodel import Session, select
 
 from trove.api.deps import current_user, db_session
@@ -140,13 +141,13 @@ async def delete_task(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     scheduler.unschedule_task(task_id)
     # Cascade manually — task_run / seen_release have FKs to task with no
-    # ON DELETE CASCADE, and SQLite has FK enforcement enabled.
-    for child in session.exec(
-        select(SeenReleaseRow).where(SeenReleaseRow.task_id == task_id)
-    ).all():
-        session.delete(child)
-    for child in session.exec(select(TaskRunRow).where(TaskRunRow.task_id == task_id)).all():
-        session.delete(child)
+    # ON DELETE CASCADE, and SQLite has FK enforcement enabled. Use bulk
+    # execute() instead of session.delete(child) so the child DELETEs hit
+    # the DB *immediately*, before the parent's DELETE is queued. The
+    # session-based variant let SQLAlchemy reorder the unit-of-work flush
+    # and the parent DELETE went out first → FK violation.
+    session.execute(sql_delete(SeenReleaseRow).where(SeenReleaseRow.task_id == task_id))
+    session.execute(sql_delete(TaskRunRow).where(TaskRunRow.task_id == task_id))
     session.delete(row)
     session.commit()
 

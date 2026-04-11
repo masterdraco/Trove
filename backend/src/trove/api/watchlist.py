@@ -4,6 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import delete as sql_delete
 from sqlmodel import Session, select
 
 from trove.ai import agent as ai_agent
@@ -126,12 +127,11 @@ def _detach_backing_task(session: Session, item: WatchlistItemRow) -> None:
     if task is None:
         return
     scheduler.unschedule_task(task_id)
-    for child in session.exec(
-        select(SeenReleaseRow).where(SeenReleaseRow.task_id == task_id)
-    ).all():
-        session.delete(child)
-    for child in session.exec(select(TaskRunRow).where(TaskRunRow.task_id == task_id)).all():
-        session.delete(child)
+    # Bulk delete the children via execute() so they hit the DB before
+    # the parent's DELETE is queued. session.delete(child) lets SQLAlchemy
+    # reorder the flush and emit the parent first → FK violation.
+    session.execute(sql_delete(SeenReleaseRow).where(SeenReleaseRow.task_id == task_id))
+    session.execute(sql_delete(TaskRunRow).where(TaskRunRow.task_id == task_id))
     session.delete(task)
 
 
