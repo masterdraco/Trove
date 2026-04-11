@@ -255,18 +255,25 @@ def _pass_filter(hit: search_service.SearchHit, filters: dict[str, Any]) -> tupl
             if isinstance(token, str) and token.lower() not in title_lower:
                 return False, f"missing:{token}"
 
-    # Strict show-name match. Compares the normalized show prefix of the
-    # hit (everything up to SxxExx, year-stripped, alnum-lowered) against
-    # the normalized filter value. Exact match required — keeps "The
-    # Boys" from grabbing "The Boys Presents Diabolical" or "The Boys of
-    # Sudworth Place", but accepts "The.Boys.2019.S01E01" and
-    # "The.Boys.S01E01" as the same show.
+    # Strict title match. Picks the right normalizer based on whether
+    # the hit looks like an episode (truncate at SxxExx) or a movie
+    # (truncate at the trailing year). Both strip embedded years and
+    # collapse to lowercase alnum so:
+    #   - "The.Boys.2019.S01E01"          -> "theboys"
+    #   - "Dune.Part.Two.2024.2160p..."   -> "duneparttwo"
+    #   - "The.Boys.Presents.Diabolical." -> "theboyspresentsdiabolical"
+    # Exact match required — keeps "The Boys" from grabbing the spinoff
+    # and "Dune Part Two" from grabbing a "Trailer" cut, while still
+    # accepting all release groups for the actual film/show.
     require_title = filters.get("require_title")
     if isinstance(require_title, str) and require_title.strip():
         import re as _re
 
         wanted = _re.sub(r"[^a-z0-9]+", "", require_title.lower())
-        actual = normalized_show_prefix(hit.title)
+        if extract_episode(hit.title) is not None:
+            actual = normalized_show_prefix(hit.title)
+        else:
+            actual = normalized_movie_name(hit.title)
         if wanted and actual != wanted:
             return False, f"title!={require_title}"
 
