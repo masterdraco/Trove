@@ -24,6 +24,15 @@ docker compose up -d
 Then open http://localhost:8000 (or http://<host-ip>:8000 from any other
 device on your LAN) and complete the setup wizard.
 
+> **Permission denied talking to the Docker socket?** Your user needs to
+> be in the `docker` group. On a fresh install:
+> ```bash
+> sudo usermod -aG docker $USER
+> newgrp docker   # or log out + back in
+> ```
+> Otherwise you'll have to prefix every command with `sudo`. Note that
+> membership in the `docker` group is effectively root on the host.
+
 ### LAN access
 
 By default Docker publishes port 8000 on all interfaces, so Trove is
