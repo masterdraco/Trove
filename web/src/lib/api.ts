@@ -248,6 +248,33 @@ export const api = {
       body: JSON.stringify(payload)
     }),
 
+  backup: {
+    downloadUrl: "/api/backup",
+    restore: async (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/backup/restore", {
+        method: "POST",
+        credentials: "include",
+        body: form
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const body = await res.json();
+          if (typeof body?.detail === "string") detail = body.detail;
+        } catch {}
+        throw { status: res.status, detail };
+      }
+      return (await res.json()) as {
+        ok: boolean;
+        restored_version: string | null;
+        restored_alembic: string | null;
+        backup_created_at: string | null;
+      };
+    }
+  },
+
   docs: {
     list: () =>
       request<{ slug: string; title: string; order: number; description: string }[]>(
