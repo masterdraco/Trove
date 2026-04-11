@@ -19,12 +19,22 @@ SYSTEM_PROMPT = """You are Trove's assistant. The user will describe what they w
 Classify the intent and extract parameters. Reply with ONE JSON object, no prose, no markdown \
 fences. Valid intents and their fields:
 
+IMPORTANT about protocol: Trove has two download protocols — torrent (Deluge,
+Transmission) and usenet (SABnzbd, NZBGet). By default, tasks search BOTH
+and let the user's configured clients pick whichever protocol the best hit
+belongs to. Only set the optional ``protocol`` field if the user EXPLICITLY
+says "via torrent", "as nzb", "only usenet", "skip usenet", or similar.
+Without an explicit preference, omit it — the user wants the best match
+regardless of source.
+
 1. add_series — user wants to automatically download every new episode of a specific TV show.
    fields: title (string, required), quality (string, optional: "2160p"|"1080p"|"720p"|"any"),
-           year (int, optional)
+           year (int, optional),
+           protocol (string, optional: "torrent"|"usenet" — ONLY if user explicitly says)
 
 2. add_movie — user wants to download ONE specific movie once it's available.
-   fields: title (string, required), year (int, optional), quality (string, optional)
+   fields: title (string, required), year (int, optional), quality (string, optional),
+           protocol (string, optional: "torrent"|"usenet" — ONLY if user explicitly says)
 
 3. add_filter_task — user wants a STANDING RULE that auto-grabs ALL items matching a filter.
    Use this when the user says "all", "always", "everything", a year range, or a broad
@@ -36,7 +46,8 @@ fences. Valid intents and their fields:
      quality (string, optional: "2160p"|"1080p"|"720p"|"any", only for video),
      max_size_gb (int, optional),
      require_tokens (list of strings, optional, MUST appear in title e.g. ["linux", "iso"]),
-     reject_tokens (list of strings, optional, e.g. ["nuked", "rerip"])
+     reject_tokens (list of strings, optional, e.g. ["nuked", "rerip"]),
+     protocol (string, optional: "torrent"|"usenet" — ONLY if user explicitly says)
 
 4. search_now — user wants to see search results RIGHT NOW, not create a task.
    fields: query (string, required)
@@ -71,6 +82,15 @@ User: grab every new switch game
 
 User: always get new audiobooks
 {"intent": "add_filter_task", "params": {"kind": "audiobook"}}
+
+User: grab severance via usenet only
+{"intent": "add_series", "params": {"title": "Severance", "protocol": "usenet"}}
+
+User: download oppenheimer as a torrent
+{"intent": "add_movie", "params": {"title": "Oppenheimer", "protocol": "torrent"}}
+
+User: get the best version of blade runner 2049
+{"intent": "add_movie", "params": {"title": "Blade Runner 2049"}}
 
 User: search for the bear season 3
 {"intent": "search_now", "params": {"query": "the bear s03"}}
@@ -115,26 +135,67 @@ def _slugify(title: str) -> str:
     return slug or "task"
 
 
-def _pick_default_client(session: Session, protocol: Protocol | None = None) -> Client | None:
-    """Return the first enabled client, preferring the requested protocol."""
+def _parse_protocol(raw: Any) -> Protocol | None:
+    """Coerce an LLM-supplied protocol hint into a Protocol enum, or None."""
+    if not isinstance(raw, str):
+        return None
+    lowered = raw.lower().strip()
+    if lowered in ("torrent", "torrents", "bittorrent"):
+        return Protocol.TORRENT
+    if lowered in ("usenet", "nzb"):
+        return Protocol.USENET
+    return None
+
+
+def _pick_default_clients(
+    session: Session,
+    preferred_protocol: Protocol | None = None,
+) -> list[Client]:
+    """Return one enabled client per protocol the user has configured.
+
+    If ``preferred_protocol`` is given, that protocol's client is returned
+    first; the other protocol (if available) follows. This lets callers
+    build multi-output tasks that route torrent hits to the torrent
+    client and usenet hits to the usenet client automatically.
+
+    Returns an empty list if the user has no enabled clients at all.
+    """
     stmt = select(Client).where(Client.enabled == True)  # noqa: E712
     rows = list(session.exec(stmt).all())
     if not rows:
-        return None
-    if protocol is not None:
-        for row in rows:
-            try:
-                if ClientType(row.type).protocol is protocol:
-                    return row
-            except ValueError:
-                continue
-    return rows[0]
+        return []
+
+    torrent_clients: list[Client] = []
+    usenet_clients: list[Client] = []
+    for row in rows:
+        try:
+            proto = ClientType(row.type).protocol
+        except ValueError:
+            continue
+        if proto is Protocol.TORRENT:
+            torrent_clients.append(row)
+        elif proto is Protocol.USENET:
+            usenet_clients.append(row)
+
+    picked: list[Client] = []
+    # First: the preferred protocol if any and we have a client
+    if preferred_protocol is Protocol.TORRENT and torrent_clients:
+        picked.append(torrent_clients[0])
+    elif preferred_protocol is Protocol.USENET and usenet_clients:
+        picked.append(usenet_clients[0])
+    # Then fill in any protocol not already represented, starting with
+    # torrent for the default-preferred ordering.
+    if not any(ClientType(c.type).protocol is Protocol.TORRENT for c in picked) and torrent_clients:
+        picked.append(torrent_clients[0])
+    if not any(ClientType(c.type).protocol is Protocol.USENET for c in picked) and usenet_clients:
+        picked.append(usenet_clients[0])
+    return picked
 
 
 def _build_series_task_yaml(
     title: str,
     quality: str | None,
-    output_client: str,
+    output_clients: list[str],
 ) -> str:
     require: list[str] = []
     if quality and quality != "any":
@@ -152,7 +213,7 @@ def _build_series_task_yaml(
             "min_seeders": 2,
             "reject": reject,
         },
-        "outputs": [output_client],
+        "outputs": list(output_clients),
     }
     if require:
         config["filters"]["require"] = require
@@ -163,7 +224,7 @@ def _build_movie_task_yaml(
     title: str,
     year: int | None,
     quality: str | None,
-    output_client: str,
+    output_clients: list[str],
 ) -> str:
     query = f"{title} {year}" if year else title
     require: list[str] = []
@@ -181,7 +242,7 @@ def _build_movie_task_yaml(
             "min_seeders": 5,
             "reject": ["cam", "telesync", "hdcam", "workprint", "hdts"],
         },
-        "outputs": [output_client],
+        "outputs": list(output_clients),
     }
     if require:
         config["filters"]["require"] = require
@@ -194,8 +255,8 @@ def _build_filter_task_yaml(
     year_max: int | None,
     quality: str | None,
     max_size_gb: int | None,
-    output_client: str,
-    protocol: str,
+    output_clients: list[str],
+    protocols: list[str],
     require_tokens: list[str] | None = None,
     reject_tokens: list[str] | None = None,
 ) -> str:
@@ -239,16 +300,21 @@ def _build_filter_task_yaml(
     if max_size_gb is not None:
         filters["max_size_mb"] = max_size_gb * 1024
 
+    # Build one rss_items input per protocol so both torrent and usenet
+    # feeds are considered. If only one protocol is given, we emit a
+    # single input. An empty protocols list means "all feeds regardless
+    # of protocol" — we emit a single input without the protocol filter.
+    inputs: list[dict[str, Any]] = []
+    if not protocols:
+        inputs.append({"kind": "rss_items", "limit": 1000})
+    else:
+        for proto in protocols:
+            inputs.append({"kind": "rss_items", "protocol": proto, "limit": 1000})
+
     config: dict[str, Any] = {
-        "inputs": [
-            {
-                "kind": "rss_items",
-                "protocol": protocol,
-                "limit": 1000,
-            }
-        ],
+        "inputs": inputs,
         "filters": filters,
-        "outputs": [output_client],
+        "outputs": list(output_clients),
     }
     return yaml.safe_dump(config, sort_keys=False)
 
@@ -359,6 +425,7 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
             if isinstance(reject_tokens_raw, list)
             else None
         )
+        preferred_proto = _parse_protocol(params.get("protocol"))
 
         # Feeds are required — this intent reads from the local RSS cache
         from sqlmodel import select as sql_select
@@ -379,11 +446,9 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                 ),
             )
 
-        client = _pick_default_client(session, protocol=Protocol.TORRENT)
+        clients = _pick_default_clients(session, preferred_protocol=preferred_proto)
         warnings: list[str] = []
-        if client is None:
-            client = _pick_default_client(session)
-        if client is None:
+        if not clients:
             return ProposedAction(
                 intent="chat",
                 params={},
@@ -391,8 +456,30 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                 requires_confirmation=False,
                 message="Add a download client before creating a filter task.",
             )
+        if preferred_proto is Protocol.TORRENT and not any(
+            ClientType(c.type).protocol is Protocol.TORRENT for c in clients
+        ):
+            warnings.append(
+                "You asked for torrent only but no torrent client is configured — "
+                "using the usenet client instead."
+            )
+        if preferred_proto is Protocol.USENET and not any(
+            ClientType(c.type).protocol is Protocol.USENET for c in clients
+        ):
+            warnings.append(
+                "You asked for usenet only but no usenet client is configured — "
+                "using the torrent client instead."
+            )
 
-        protocol = ClientType(client.type).protocol.value
+        # Filter clients list if user explicitly asked for a single protocol
+        if preferred_proto is not None:
+            clients = [
+                c for c in clients if ClientType(c.type).protocol is preferred_proto
+            ] or clients
+
+        # Which protocols to query in the rss_items input?
+        active_protocols = sorted({ClientType(c.type).protocol.value for c in clients})
+
         # Build a readable task name
         parts = ["auto", kind if kind != "any" else "all"]
         if year_min and year_max:
@@ -413,8 +500,8 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
             year_max=year_max,
             quality=quality,
             max_size_gb=max_size_gb,
-            output_client=client.name,
-            protocol=protocol,
+            output_clients=[c.name for c in clients],
+            protocols=active_protocols,
             require_tokens=require_tokens,
             reject_tokens=reject_tokens,
         )
@@ -445,10 +532,12 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
         if require_tokens:
             keyword_desc = f" containing {', '.join(f'*{t}*' for t in require_tokens)}"
 
+        client_names = ", ".join(f"**{c.name}**" for c in clients)
+        protocol_label = f" ({'+'.join(active_protocols)})" if len(active_protocols) > 1 else ""
         description = (
             f"Create a standing task **{task_name}** that checks your RSS feeds every hour "
             f"for all {kind_label}{year_desc}{quality_desc}{size_desc}{keyword_desc} and sends "
-            f"matches to **{client.name}**. Already-seen releases are skipped."
+            f"matches to {client_names}{protocol_label}. Already-seen releases are skipped."
         )
 
         if len(feeds) == 1:
@@ -473,7 +562,8 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                 "task_name": task_name,
                 "schedule_cron": schedule,
                 "config_yaml": config_yaml,
-                "client": client.name,
+                "clients": [c.name for c in clients],
+                "protocols": active_protocols,
             },
             warnings=warnings,
         )
@@ -492,12 +582,11 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
         if isinstance(quality, str):
             quality = quality.lower().strip() or None
         year = params.get("year") if isinstance(params.get("year"), int) else None
+        preferred_proto = _parse_protocol(params.get("protocol"))
 
-        client = _pick_default_client(session, protocol=Protocol.TORRENT)
+        clients = _pick_default_clients(session, preferred_protocol=preferred_proto)
         warnings: list[str] = []
-        if client is None:
-            client = _pick_default_client(session)
-        if client is None:
+        if not clients:
             return ProposedAction(
                 intent="chat",
                 params={},
@@ -508,31 +597,53 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                     "download clients yet. Go to the Clients page first."
                 ),
             )
-        if client.type not in ("deluge", "transmission"):
+
+        # Filter clients list if user explicitly asked for a single protocol
+        if preferred_proto is Protocol.TORRENT and not any(
+            ClientType(c.type).protocol is Protocol.TORRENT for c in clients
+        ):
             warnings.append(
-                f"Using {client.name} ({client.type}) since no torrent client is configured."
+                "You asked for torrent only but no torrent client is configured — "
+                "using usenet instead."
             )
+        elif preferred_proto is Protocol.USENET and not any(
+            ClientType(c.type).protocol is Protocol.USENET for c in clients
+        ):
+            warnings.append(
+                "You asked for usenet only but no usenet client is configured — "
+                "using torrent instead."
+            )
+        elif preferred_proto is not None:
+            clients = [
+                c for c in clients if ClientType(c.type).protocol is preferred_proto
+            ] or clients
+
+        output_names = [c.name for c in clients]
+        active_protocols = sorted({ClientType(c.type).protocol.value for c in clients})
+        protocol_label = f" ({'+'.join(active_protocols)})" if len(active_protocols) > 1 else ""
+        client_names = ", ".join(f"**{c.name}**" for c in clients)
 
         if intent == "add_series":
             task_name = _slugify(title)
-            config_yaml = _build_series_task_yaml(title, quality, client.name)
+            config_yaml = _build_series_task_yaml(title, quality, output_names)
             schedule = "0 * * * *"  # hourly
             desc_quality = f" in **{quality}**" if quality and quality != "any" else ""
             description = (
                 f"Create a task **{task_name}** that searches hourly for new **{title}** "
-                f"episodes{desc_quality} and sends them to **{client.name}**. Already-seen "
-                "releases are skipped automatically."
+                f"episodes{desc_quality} across all your indexers and sends matches to "
+                f"{client_names}{protocol_label}. Already-seen releases are skipped."
             )
         else:
             task_name = _slugify(f"{title}-{year}" if year else title)
-            config_yaml = _build_movie_task_yaml(title, year, quality, client.name)
+            config_yaml = _build_movie_task_yaml(title, year, quality, output_names)
             schedule = "0 */2 * * *"  # every 2 hours
             desc_quality = f" in **{quality}**" if quality and quality != "any" else ""
             year_text = f" ({year})" if year else ""
             description = (
                 f"Create a task **{task_name}** that searches every 2 hours for "
-                f"**{title}**{year_text}{desc_quality} and sends the best match to "
-                f"**{client.name}**. The task stops after the movie is downloaded."
+                f"**{title}**{year_text}{desc_quality} across all your indexers and sends "
+                f"the best match to {client_names}{protocol_label}. The task stops after "
+                f"the movie is downloaded."
             )
 
         return ProposedAction(
@@ -541,7 +652,6 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                 "title": title,
                 "quality": quality,
                 "year": year,
-                "client_name": client.name,
                 "task_name": task_name,
                 "config_yaml": config_yaml,
                 "schedule_cron": schedule,
@@ -551,7 +661,8 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                 "task_name": task_name,
                 "schedule_cron": schedule,
                 "config_yaml": config_yaml,
-                "client": client.name,
+                "clients": output_names,
+                "protocols": active_protocols,
             },
             warnings=warnings,
         )
