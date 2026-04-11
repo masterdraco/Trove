@@ -40,9 +40,17 @@ def extract_episode(title: str) -> tuple[int, int] | None:
 
 
 def normalized_show_prefix(title: str) -> str:
-    """Return the title up to the SxxExx marker, lowercased and alnum-only."""
+    """Return the title up to the SxxExx marker, lowercased and alnum-only.
+
+    A 4-digit year embedded in the prefix is stripped, so
+    "The.Boys.2019.S01E01" and "The.Boys.S01E01" produce the same
+    normalized show name. This keeps the dedup key stable across
+    release groups that disambiguate by year and those that don't.
+    """
     m = SEASON_EPISODE_RE.search(title)
     prefix = title[: m.start()] if m else title
+    # Drop any 4-digit years sitting between separators.
+    prefix = YEAR_RE.sub(" ", prefix)
     return _STRIP.sub("", prefix.lower())[:40]
 
 

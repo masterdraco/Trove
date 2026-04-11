@@ -255,20 +255,25 @@ def _pass_filter(hit: search_service.SearchHit, filters: dict[str, Any]) -> tupl
             if isinstance(token, str) and token.lower() not in title_lower:
                 return False, f"missing:{token}"
 
-    # Strict show/movie title prefix match. Used by watchlist-promoted
-    # tasks to keep "The Boys" from grabbing every Fringe/Criminal Minds
-    # episode whose episode title happens to contain "The Boy(s)".
+    # Strict show-name match. Compares the normalized show prefix of the
+    # hit (everything up to SxxExx, year-stripped, alnum-lowered) against
+    # the normalized filter value. Exact match required — keeps "The
+    # Boys" from grabbing "The Boys Presents Diabolical" or "The Boys of
+    # Sudworth Place", but accepts "The.Boys.2019.S01E01" and
+    # "The.Boys.S01E01" as the same show.
     require_title = filters.get("require_title")
     if isinstance(require_title, str) and require_title.strip():
-        import re
+        import re as _re
 
-        def _toks(s: str) -> list[str]:
-            return [t for t in re.split(r"[^a-z0-9]+", s.lower()) if t]
+        wanted = _re.sub(r"[^a-z0-9]+", "", require_title.lower())
+        actual = normalized_show_prefix(hit.title)
+        if wanted and actual != wanted:
+            return False, f"title!={require_title}"
 
-        wanted = _toks(require_title)
-        actual = _toks(hit.title)
-        if wanted and actual[: len(wanted)] != wanted:
-            return False, f"title!^={require_title}"
+    # Episode-only mode for series tasks: drop season packs and
+    # multi-episode bundles that don't carry an explicit SxxExx marker.
+    if filters.get("require_episode") and extract_episode(hit.title) is None:
+        return False, "no episode marker"
 
     return True, "ok"
 

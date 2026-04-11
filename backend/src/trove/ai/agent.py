@@ -204,11 +204,15 @@ def _build_series_task_yaml(
     filters: dict[str, Any] = {
         "min_seeders": 2,
         "reject": reject,
-        # Strict show-name prefix filter — keeps "The Boys" from grabbing
-        # every Fringe / Criminal Minds episode whose episode title
-        # happens to contain "The Boy(s)". Indexers that honor tmdbid
-        # filter at the source; this is the fallback for the rest.
+        # Strict show-name match — keeps "The Boys" from grabbing every
+        # Fringe / Criminal Minds episode whose title happens to contain
+        # "The Boy(s)", and from grabbing the spinoff "The Boys Presents
+        # Diabolical". Indexers that honor tmdbid filter at the source;
+        # this is the fallback for the rest.
         "require_title": title,
+        # Episode-level only — drop season packs and multi-episode
+        # bundles like "The.Boys.Season.4" or "The.Boys.S01.Complete".
+        "require_episode": True,
     }
     if quality and quality != "any":
         # Soft preference — ranking boost, not a hard filter. If the
