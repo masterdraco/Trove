@@ -12,7 +12,7 @@ description: Common issues, gotchas, and how to debug them.
 - **Session secret**: `config/session.secret` — 48-byte random token generated on first run, used for session cookies AND credential encryption
 - **Working data**: `data/` — temporary torrent/NZB files during processing
 
-Back up the entire `config/` directory and you can restore a complete Trove install anywhere.
+For proper backup and migration use the **[Backup & Restore](backup)** page — it produces a single zip with the DB + session secret + a manifest, and can restore it in one click on another host.
 
 ## I changed the AI model and chat still uses the old one
 
@@ -77,12 +77,9 @@ Check logs: `docker compose logs -f trove`. Most common startup errors:
 
 ## How do I back up and restore?
 
-Back up the whole `config/` directory — it contains everything. To restore on a new host:
+**Use the UI** — see the dedicated **[Backup & Restore](backup)** guide. In short: Settings → Backup & restore → **Download .zip** on the old host, **Restore from backup** on the new host. Everything comes across including credentials.
 
-1. Stop the Trove container on the new host if running
-2. Copy `config/` over (preserve permissions on `session.secret` — should be 600)
-3. Start the container
-4. All clients, indexers, feeds, tasks, and settings are restored automatically
+If you prefer the manual route, the whole `config/` directory is self-contained — copy it across, preserve the `0600` permission on `session.secret`, and start the container. But the UI route is safer because it checkpoints the WAL, validates checksums, and handles the scheduler restart for you.
 
 The `data/` directory is transient — no need to back it up.
 

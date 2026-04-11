@@ -43,6 +43,7 @@ Once setup is done, check the other docs in this sidebar for details on each fea
 - [RSS Feeds](feeds) — poll tracker RSS and build a searchable local cache
 - [Tasks](tasks) — YAML format, filters, scheduling
 - [AI Assistant](ai-agent) — natural-language commands that create tasks for you
+- [Backup & Restore](backup) — snapshot your install and migrate to another host
 
 ## LAN access troubleshooting
 
