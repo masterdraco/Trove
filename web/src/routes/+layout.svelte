@@ -264,7 +264,7 @@
           href="https://www.buymeacoffee.com/MasterDraco"
           target="_blank"
           rel="noopener noreferrer"
-          class="group flex w-full items-center justify-center gap-4 bg-gradient-to-r from-amber-500/10 via-orange-500/15 to-amber-500/10 px-6 py-4 text-sm font-medium text-foreground/90 transition-all hover:from-amber-500/15 hover:via-orange-500/25 hover:to-amber-500/15 hover:text-foreground hover:shadow-[0_4px_32px_-8px_rgba(251,191,36,0.6)]"
+          class="group flex w-full items-center justify-center gap-4 bg-gradient-to-r from-primary/10 via-primary-2/15 to-primary/10 px-6 py-4 text-sm font-medium text-foreground/90 transition-all hover:from-primary/15 hover:via-primary-2/25 hover:to-primary/15 hover:text-foreground hover:shadow-[0_4px_32px_-8px_hsl(var(--primary)/0.55)]"
           title="Support Trove development with a coffee ☕"
         >
           <span class="hidden text-base sm:block">Enjoying Trove? Support the project</span>
