@@ -67,6 +67,63 @@
     }
   }
 
+  let updating = $state(false);
+  let updateStage = $state<string>("");
+  let updateError = $state<string | null>(null);
+
+  async function runUpdate() {
+    if (
+      !confirm(
+        "Pull latest code from GitHub and restart Trove? The server will be unreachable for ~60–90 seconds while it rebuilds."
+      )
+    )
+      return;
+    updating = true;
+    updateError = null;
+    updateStage = "Starting update script…";
+    const startingVersion = versionInfo?.current;
+    try {
+      const r = await api.system.update();
+      if (!r.ok) {
+        updateError = r.message;
+        updating = false;
+        return;
+      }
+      // Poll /api/health every 2s. The server will go down, come back,
+      // and report the new version. We give up after ~3 minutes.
+      updateStage = "Server is rebuilding — this takes 1–2 minutes…";
+      const deadline = Date.now() + 180_000;
+      let serverWentDown = false;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const h = await api.health();
+          if (!serverWentDown) {
+            // Server is still up (pre-restart phase) — keep waiting
+            updateStage = "Pulling code and building…";
+            continue;
+          }
+          // Server came back up — compare versions
+          if (h.version !== startingVersion) {
+            updateStage = `Updated to v${h.version}. Reloading…`;
+            updating = false;
+            setTimeout(() => window.location.reload(), 1500);
+            return;
+          }
+          updateStage = `Server came back but still v${h.version}. Waiting…`;
+        } catch {
+          serverWentDown = true;
+          updateStage = "Server is restarting…";
+        }
+      }
+      updateError = "Update timed out after 3 minutes. Check /tmp/trove-update.log on the server.";
+      updating = false;
+    } catch (e) {
+      updateError = (e as { detail?: string }).detail ?? "Update failed";
+      updating = false;
+    }
+  }
+
   onMount(async () => {
     try {
       aiStatus = await api.ai.status();
@@ -449,26 +506,61 @@
               Trove v{versionInfo.latest} is available
             </div>
             <div class="mt-1 text-xs text-muted-foreground">
-              You're running v{versionInfo.current}. Pull the latest code and rebuild the container
-              to upgrade. Your database and session secret are preserved across upgrades.
+              You're running v{versionInfo.current}. Your database and session secret are
+              preserved across upgrades.
             </div>
+
+            <div class="mt-4 flex flex-wrap gap-2">
+              <button
+                class="btn-primary"
+                onclick={runUpdate}
+                disabled={updating}
+              >
+                {#if updating}
+                  <Loader2 class="h-3.5 w-3.5 animate-spin" />
+                {:else}
+                  <Rocket class="h-3.5 w-3.5" />
+                {/if}
+                Update now
+              </button>
+              {#if versionInfo.release_url}
+                <a
+                  href={versionInfo.release_url}
+                  target="_blank"
+                  rel="noopener"
+                  class="btn-secondary"
+                >
+                  <ExternalLink class="h-3.5 w-3.5" />
+                  View on GitHub
+                </a>
+              {/if}
+            </div>
+
+            {#if updating || updateStage}
+              <div class="mt-3 rounded-xl border border-border/50 bg-background/60 px-3 py-2 text-xs">
+                <div class="flex items-center gap-2 font-mono">
+                  {#if updating}
+                    <Loader2 class="h-3 w-3 animate-spin text-primary" />
+                  {:else}
+                    <CheckCircle2 class="h-3 w-3 text-success" />
+                  {/if}
+                  {updateStage}
+                </div>
+              </div>
+            {/if}
+            {#if updateError}
+              <div class="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <XCircle class="inline h-3 w-3" /> {updateError}
+              </div>
+            {/if}
+
             {#if versionInfo.release_notes}
-              <details class="mt-3">
+              <details class="mt-4">
                 <summary class="cursor-pointer text-xs text-primary hover:underline">
                   Release notes
                 </summary>
                 <pre class="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap rounded-md bg-background/50 p-3 text-[11px] text-foreground/80">{versionInfo.release_notes}</pre>
               </details>
-            {/if}
-            {#if versionInfo.release_url}
-              <a
-                href={versionInfo.release_url}
-                target="_blank"
-                rel="noopener"
-                class="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-              >
-                View on GitHub <ExternalLink class="h-2.5 w-2.5" />
-              </a>
             {/if}
           </div>
         </div>

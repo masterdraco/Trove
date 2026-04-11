@@ -1,19 +1,25 @@
-"""System-level endpoints: version info, update checks."""
+"""System-level endpoints: version info, update checks, self-update."""
 
 from __future__ import annotations
 
 import base64
+import os
 import re
+import subprocess
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Depends, Query
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from trove import __version__
 from trove.api.deps import current_user
 from trove.models.user import User
+
+log = structlog.get_logger()
 
 router = APIRouter()
 
@@ -181,3 +187,96 @@ async def version_info(
     result = await _run_check()
     _CACHE = _CacheEntry(result=result, ts=now)
     return result
+
+
+class UpdateTriggerResponse(BaseModel):
+    ok: bool
+    message: str
+    log_path: str
+    pid: int | None
+
+
+def _find_repo_root() -> Path | None:
+    """Walk upward from this file until we find .git or scripts/update.sh."""
+    here = Path(__file__).resolve()
+    for parent in [here, *here.parents]:
+        script = parent / "scripts" / "update.sh"
+        if script.is_file():
+            return parent
+    return None
+
+
+@router.post("/update", response_model=UpdateTriggerResponse)
+async def trigger_update(_user: User = Depends(current_user)) -> UpdateTriggerResponse:
+    """Spawn the update script in a detached subprocess.
+
+    The script:
+      1. git fetch + git reset --hard origin/main
+      2. uv pip install -e . (backend)
+      3. alembic upgrade head
+      4. pnpm install + pnpm build (web)
+      5. copy web build into backend/src/trove/static
+      6. kill the current uvicorn gracefully
+      7. start a new uvicorn via setsid + nohup with the same env
+
+    The subprocess is detached via start_new_session=True so killing
+    the current uvicorn in step 6 doesn't kill the update process too.
+
+    Environment variables (TROVE_*) are inherited from the current
+    process so the new uvicorn gets the same config.
+
+    Returns immediately after spawning — the frontend should poll
+    /api/health until the version changes to detect completion.
+    """
+    repo_root = _find_repo_root()
+    if repo_root is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="scripts/update.sh not found — are we running from source?",
+        )
+
+    script = repo_root / "scripts" / "update.sh"
+    if not os.access(script, os.X_OK):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"{script} is not executable",
+        )
+
+    log.info("system.update.triggered", script=str(script))
+
+    # Make sure the log file exists and is writable before we detach
+    log_path = "/tmp/trove-update.log"
+    try:
+        Path(log_path).touch(exist_ok=True)
+    except OSError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"cannot create update log: {e}",
+        ) from e
+
+    # Spawn detached — start_new_session=True is setsid(). The child
+    # survives when we kill the current uvicorn a few seconds later.
+    env = os.environ.copy()
+    try:
+        proc = subprocess.Popen(
+            ["/usr/bin/env", "bash", str(script)],
+            cwd=str(repo_root),
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except OSError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"failed to spawn update script: {e}",
+        ) from e
+
+    return UpdateTriggerResponse(
+        ok=True,
+        message="Update started. Server will restart shortly.",
+        log_path=log_path,
+        pid=proc.pid,
+    )

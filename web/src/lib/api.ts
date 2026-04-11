@@ -294,7 +294,12 @@ export const api = {
         release_url: string | null;
         checked_at: number;
         error: string | null;
-      }>(`/api/system/version${force ? "?force=true" : ""}`)
+      }>(`/api/system/version${force ? "?force=true" : ""}`),
+    update: () =>
+      request<{ ok: boolean; message: string; log_path: string; pid: number | null }>(
+        "/api/system/update",
+        { method: "POST" }
+      )
   },
 
   backup: {
