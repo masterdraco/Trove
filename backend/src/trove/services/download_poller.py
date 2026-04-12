@@ -17,19 +17,15 @@ handful of rows per tick.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 
 import structlog
 from sqlmodel import Session, select
 
-from trove.clients.base import DownloadStatus
+from trove.clients.base import DownloadState, DownloadStatus
 from trove.db import get_engine
 from trove.models.client import Client
 from trove.models.task import SeenReleaseRow
-from trove.services import client_registry
-
-if TYPE_CHECKING:
-    from trove.clients.base import DownloadState
+from trove.services import client_registry, notification_service
 
 log = structlog.get_logger()
 
@@ -43,6 +39,77 @@ TERMINAL_STATES = {
 # Only poll rows grabbed within this window. Older rows are assumed
 # done-for-good even if we never saw the transition.
 POLL_WINDOW = timedelta(hours=48)
+
+
+def _format_size(size: int | None) -> str:
+    if not size or size <= 0:
+        return "?"
+    size_f = float(size)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size_f < 1024:
+            return f"{size_f:.1f}{unit}" if unit != "B" else f"{int(size_f)}B"
+        size_f /= 1024
+    return f"{size_f:.1f}PB"
+
+
+async def _dispatch_transition(
+    session: Session,
+    row: SeenReleaseRow,
+    prior: str | None,
+    state: DownloadState,
+) -> None:
+    """Fire a notification event for a meaningful state change.
+
+    Only dispatch on the "interesting" transitions — queued→downloading,
+    →completed, →failed, →removed. We don't spam on verifying or
+    pause transitions; those would be too chatty.
+    """
+    new_status = state.status.value
+    # Intermediate noise — skip.
+    if new_status in ("queued", "paused", "verifying", "unknown"):
+        return
+    if new_status == prior:
+        return
+    size_label = _format_size(state.size_bytes)
+    fields = {
+        "Task id": str(row.task_id),
+        "Title": (state.display_title or row.title)[:120],
+        "Size": size_label,
+    }
+    if new_status == "downloading":
+        event = notification_service.Event(
+            kind="download.started",
+            title=f"Downloading: {row.title[:120]}",
+            description=f"{state.display_title or row.title}",
+            fields=fields,
+        )
+    elif new_status == "completed":
+        event = notification_service.Event(
+            kind="download.completed",
+            title=f"Completed: {row.title[:120]}",
+            description=f"{state.display_title or row.title}",
+            fields=fields,
+        )
+    elif new_status == "failed":
+        err_fields = dict(fields)
+        if state.error_message:
+            err_fields["Error"] = state.error_message[:200]
+        event = notification_service.Event(
+            kind="download.failed",
+            title=f"Failed: {row.title[:120]}",
+            description=f"{state.display_title or row.title}",
+            fields=err_fields,
+        )
+    elif new_status == "not_found":
+        event = notification_service.Event(
+            kind="download.removed",
+            title=f"Removed from client: {row.title[:120]}",
+            description="Trove will re-grab this release on the next task run.",
+            fields=fields,
+        )
+    else:
+        return
+    await notification_service.dispatch(session, event)
 
 
 async def poll_once() -> dict[str, int]:
@@ -125,6 +192,7 @@ async def poll_once() -> dict[str, int]:
 
                 if prior != row.download_status:
                     stats["transitioned"] += 1
+                    await _dispatch_transition(session, row, prior, state)
                 stats["updated"] += 1
                 session.add(row)
 

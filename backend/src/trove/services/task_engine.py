@@ -30,9 +30,19 @@ from trove.parsing.title import (
     normalized_movie_name,
     normalized_show_prefix,
 )
-from trove.services import client_registry, search_service
+from trove.services import client_registry, notification_service, search_service
 
 log = structlog.get_logger()
+
+
+def _format_size(size: int | None) -> str:
+    if not size or size <= 0:
+        return "?"
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024:
+            return f"{size:.1f}{unit}" if unit != "B" else f"{size}{unit}"
+        size /= 1024  # type: ignore[assignment]
+    return f"{size:.1f}PB"  # type: ignore[str-format]
 
 
 def parse_task_config(config_yaml: str) -> dict[str, Any]:
@@ -587,6 +597,32 @@ async def run_task(
                 if outcome.ok:
                     grabbed_keys.add(key)
                     accepted += 1
+                    await notification_service.dispatch(
+                        session,
+                        notification_service.Event(
+                            kind="task.grabbed",
+                            title=f"Grabbed: {hit.title[:120]}",
+                            description=f"Sent to **{outcome.message}** by task **{task.name}**.",
+                            fields={
+                                "Task": task.name,
+                                "Client": outcome.message,
+                                "Size": _format_size(hit.size) if hit.size else "?",
+                            },
+                        ),
+                    )
+                else:
+                    await notification_service.dispatch(
+                        session,
+                        notification_service.Event(
+                            kind="task.send_failed",
+                            title=f"Send failed: {hit.title[:120]}",
+                            description=(
+                                f"Task **{task.name}** found a match but no client "
+                                f"accepted it: {outcome.message}"
+                            ),
+                            fields={"Task": task.name, "Reason": outcome.message},
+                        ),
+                    )
         # Distinguish between "ran cleanly and grabbed something", "ran
         # cleanly but nothing matched", and "ran cleanly and found zero
         # hits at all". Previously everything was "success" which made

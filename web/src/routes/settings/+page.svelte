@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api } from "$lib/api";
+  import NotificationsPanel from "./NotificationsPanel.svelte";
   import { goto } from "$app/navigation";
   import {
     Sparkles,
@@ -948,6 +949,8 @@
       <pre class="mt-3 overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">Loading…</pre>
     {/if}
   </div>
+
+  <NotificationsPanel />
 
   <div class="surface p-6">
     <div class="flex items-center gap-3">

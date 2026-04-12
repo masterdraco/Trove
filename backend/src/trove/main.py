@@ -22,6 +22,7 @@ from trove.api import feeds as feeds_router
 from trove.api import health as health_router
 from trove.api import indexers as indexers_router
 from trove.api import logs as logs_router
+from trove.api import notifications as notifications_router
 from trove.api import search as search_router
 from trove.api import system as system_router
 from trove.api import tasks as tasks_router
@@ -83,6 +84,11 @@ def create_app() -> FastAPI:
     app.include_router(backup_router.router, prefix="/api/backup", tags=["backup"])
     app.include_router(app_settings_router.router, prefix="/api/settings", tags=["settings"])
     app.include_router(logs_router.router, prefix="/api/logs", tags=["logs"])
+    app.include_router(
+        notifications_router.router,
+        prefix="/api/notifications",
+        tags=["notifications"],
+    )
     app.include_router(torznab_router.router, prefix="/torznab", tags=["torznab"])
 
     static_dir = Path(__file__).resolve().parent / "static"

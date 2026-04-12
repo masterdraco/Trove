@@ -109,6 +109,47 @@ export type IndexerHealthOut = {
   sparkline: number[][];
 };
 
+export type NotificationProviderType =
+  | "discord_webhook"
+  | "discord_bot"
+  | "telegram"
+  | "ntfy"
+  | "webhook";
+
+export type NotificationEventKind =
+  | "task.grabbed"
+  | "task.send_failed"
+  | "task.error"
+  | "download.started"
+  | "download.completed"
+  | "download.failed"
+  | "download.removed";
+
+export type NotificationOut = {
+  id: number;
+  name: string;
+  type: NotificationProviderType;
+  events: NotificationEventKind[];
+  enabled: boolean;
+  created_at: string;
+  last_sent_at: string | null;
+  last_sent_ok: boolean | null;
+  last_sent_message: string | null;
+};
+
+export type NotificationCreate = {
+  name: string;
+  type: NotificationProviderType;
+  config: Record<string, unknown>;
+  events: NotificationEventKind[];
+  enabled?: boolean;
+};
+
+export type NotificationMeta = {
+  event_kinds: NotificationEventKind[];
+  provider_types: NotificationProviderType[];
+};
+
 export type SearchHit = {
   title: string;
   protocol: Protocol;
@@ -295,6 +336,27 @@ export const api = {
         `/api/clients/${id}/send`,
         { method: "POST", body: JSON.stringify(payload) }
       )
+  },
+
+  notifications: {
+    meta: () => request<NotificationMeta>("/api/notifications/meta"),
+    list: () => request<NotificationOut[]>("/api/notifications"),
+    create: (payload: NotificationCreate) =>
+      request<NotificationOut>("/api/notifications", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    update: (id: number, payload: Partial<NotificationCreate>) =>
+      request<NotificationOut>(`/api/notifications/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      }),
+    remove: (id: number) =>
+      request<void>(`/api/notifications/${id}`, { method: "DELETE" }),
+    test: (id: number) =>
+      request<{ ok: boolean; message: string | null }>(`/api/notifications/${id}/test`, {
+        method: "POST"
+      })
   },
 
   indexers: {
