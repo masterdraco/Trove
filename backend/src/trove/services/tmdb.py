@@ -215,13 +215,10 @@ async def upcoming_movies(limit: int = 20) -> list[TmdbItem]:
     from datetime import date as _date
 
     today = _date.today().isoformat()
-    pages = max(1, (limit + 19) // 20)
-    items = await _multi_page(
-        "/movie/upcoming",
-        pages,
-        _coerce_movie,
-        params={"primary_release_date.gte": today},
-    )
+    # Fetch extra pages because we'll drop past releases.
+    pages = max(2, (limit + 19) // 20 + 1)
+    raw = await _multi_page("/movie/upcoming", pages, _coerce_movie)
+    items = [i for i in raw if i.release_date and i.release_date >= today]
     return items[:limit]
 
 
