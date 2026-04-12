@@ -61,6 +61,22 @@ When you click Restore, Trove:
 
 If anything goes wrong mid-restore, you'll find the original files in `config/.pre-restore/` with names like `trove.db.1775913000` and `session.secret.1775913000`. Move them back to `config/trove.db` and `config/session.secret`, restart the container, and you're back to the pre-restore state.
 
+## Recovering from a broken database
+
+If the live database is so badly damaged that the UI itself stops loading (every API call returns 500 because user lookup fails), you can still trigger the restore. The `POST /api/backup/restore` endpoint validates the session cookie against `session.secret` directly — it does *not* require a working DB to authenticate. As long as you still have a valid session cookie from before things broke, you can curl the endpoint:
+
+```bash
+curl -X POST http://trove.lan:8000/api/backup/restore \
+  --cookie "trove_session=$TROVE_SESSION" \
+  -F "file=@trove-backup-20260411-220000.zip"
+```
+
+The response is the same JSON the UI would have shown (`{"ok": true, "restored_version": ..., ...}`). After the swap, all other endpoints come back to life and you can refresh the browser normally.
+
+If you've lost the cookie too, the only path is to stop the container, manually move the corrupt `trove.db` aside, extract `trove.db` and `session.secret` from the backup zip into `./config/`, fix ownership (`chown 1000:1000`) and the secret's mode (`chmod 600 session.secret`), and start the container back up. You're doing by hand what the restore endpoint normally does.
+
+Health checks will tell you the DB is unreachable: `GET /api/health` returns HTTP 503 with `{"db": "error", "db_error": "..."}` when SQL queries against the engine fail. Wire your monitoring at this — a static 200 from health while everything else 500's is the worst kind of "all good" lie.
+
 ## Format version and forward compatibility
 
 The `manifest.json` declares a `format_version` field (currently `1`). Future Trove versions may introduce backup formats with additional files or different layouts; old Trove installs will refuse to restore newer-format backups with a clear error message. If you're restoring across very different Trove versions, apply alembic migrations before or after the restore depending on the direction — downgrading a restored database is generally not supported.

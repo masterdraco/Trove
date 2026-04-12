@@ -37,6 +37,29 @@ outputs:
   categories: [other]
 ```
 
+For TV shows and movies, you can also pin the search to a specific TMDB / IMDB id. Indexers that honor `tmdbid` / `imdbid` (most modern Newznab indexers do) then filter to *only* that title at the source — no more "The Boys" matching every Fringe episode whose title contains the words. Watchlist-promoted tasks set these automatically from the TMDB metadata.
+
+```yaml
+- kind: search
+  query: "The Boys"
+  categories: [tv]
+  tmdb_id: 76479
+```
+
+For TV shows with `tmdb_id`, the engine also iterates `season=1..N` on the indexer so older seasons are backfilled — a single Newznab call caps at ~100 hits, which usually only covers the latest season. The first run does a full sweep (capped at 20 seasons); subsequent runs only check the latest grabbed season + the next one to keep API usage low.
+
+You can override the season-iteration explicitly:
+
+```yaml
+- kind: search
+  query: "The Boys"
+  categories: [tv]
+  tmdb_id: 76479
+  seasons: [1, 2, 3]   # only these seasons
+  # seasons: 4         # only this one
+  # seasons: auto      # the same as omitting the field when tmdb_id is set
+```
+
 **`kind: rss_items`** — Reads from the local RSS cache without hitting indexers. Much faster, and the basis for "standing filter rules" created by the AI agent.
 
 ```yaml
@@ -52,7 +75,7 @@ All filters are optional and combine as AND. An item must pass every defined fil
 
 | Key | Type | Meaning |
 |---|---|---|
-| `min_seeders` | int | Drop if seeders < N |
+| `min_seeders` | int | Drop if seeders < N (torrents only — NZBs are exempt) |
 | `min_size_mb` | int | Drop if size < N MB |
 | `max_size_mb` | int | Drop if size > N MB |
 | `year_min` | int | Parse year from title; drop if year < N |
@@ -61,6 +84,9 @@ All filters are optional and combine as AND. An item must pass every defined fil
 | `categories` | list | Only accept items whose category matches one of these |
 | `require` | list | Each token must appear in title (case-insensitive) |
 | `reject` | list | None of these tokens may appear in title |
+| `require_title` | string | Strict show/movie name match. The hit's normalized title prefix (everything up to the SxxExx for series, or up to the year for movies) must equal the normalized filter value. Embedded years are stripped, so "The.Boys.2019.S01E01" and "The.Boys.S01E01" both match `require_title: "The Boys"`. Rejects spinoffs like "The Boys Presents Diabolical" and false positives like Fringe episodes whose episode title contains "The Boy". |
+| `require_episode` | bool | Drop releases that don't carry an explicit SxxExx marker. Filters out season packs ("The.Boys.Season.4"), bundles ("The.Boys.S01.Complete"), and the weird `(The Boys S03 E05 T&M E08)` multi-episode formats. Set automatically by watchlist-promoted series tasks. |
+| `prefer_quality` | string | Soft ranking boost (not a hard filter). The release whose title contains this token wins the rank tie-break — if "2160p" releases exist, they're picked first; if not, the engine still grabs the best lower-quality match. |
 
 ### Outputs
 
@@ -95,9 +121,11 @@ On `/tasks`:
 
 Trove tracks every release it has ever sent (or attempted to send) for each task in the `seen_release` table. When a task runs, it automatically skips any release it's seen before — so recurring tasks don't re-download the same thing every hour.
 
-If you want to "forget" the history for a task (e.g., after changing filters drastically), delete the task and recreate it with the same config. Or ask in the forum for a `trove seen clear` helper — it's on the roadmap.
+The dedup key is episode-level for series (`e:<show>:s01e01`), so 2160p, 1080p, and HEVC variants of the same episode all collapse to one entry — only the highest-ranked one is grabbed. Movies dedup by `m:<title>:<year>`.
 
-## Complete example — weekly TV
+Deletes cascade: removing a task from the `/tasks` page also drops its run history and seen-release entries. Same for removing a series/movie from the watchlist when nothing else points at the backing task.
+
+## Complete example — TV show by name
 
 ```yaml
 inputs:
@@ -117,6 +145,29 @@ outputs:
 ```
 
 Schedule: `0 * * * *` (hourly)
+
+## Complete example — TV show by TMDB id (watchlist style)
+
+This is what the watchlist promote and the AI agent build for you when you add a series. The key bits are `tmdb_id` (so the indexer scopes the search), `require_title` + `require_episode` (so spinoffs and season packs are dropped), and the implicit `seasons: auto` from having `tmdb_id` set on a `tv` search (so older seasons get backfilled on the first run).
+
+```yaml
+inputs:
+  - kind: search
+    query: "The Boys"
+    categories: [tv]
+    tmdb_id: 76479
+
+filters:
+  min_seeders: 2
+  reject: [cam, telesync, hdcam, workprint]
+  require_title: "The Boys"
+  require_episode: true
+  prefer_quality: 2160p
+
+outputs:
+  - home-nzbget
+  - home-transmission
+```
 
 ## Complete example — all new 4K movies
 

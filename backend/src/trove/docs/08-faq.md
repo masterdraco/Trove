@@ -38,8 +38,13 @@ Turn on **Dry run** mode and expand the log in `/history` or on the task's detai
 - `kind:not-movie` — the release looks like a TV episode (has SxxExx) but `kind: movie` is set
 - `missing:1080p` — the release title doesn't contain "1080p"
 - `reject:cam` — the title contains a rejected token
+- `title!=The Boys` — the hit's normalized title prefix doesn't match `require_title`. Common cause: the hit is a spinoff ("The Boys Presents Diabolical") or a different show whose episode title contains the words you searched for ("Fringe S05E11 The Boy Must Live"). If you actually want both, drop the `require_title` filter
+- `no episode marker` — `require_episode: true` is set but the hit has no SxxExx (it's a season pack or full-show bundle)
+- `already grabbed` — the dedup key matches an earlier `sent` row in `seen_release`. Wipe the relevant entries from the DB if you want to re-grab
 
 Adjust the filters and dry-run again until accepted count is > 0.
+
+If a TV-show task only finds 2-4 unique episodes when dozens exist on the indexer, the cause is almost always that the watchlist promote didn't have a TMDB id to bake in. Open the task config and add `tmdb_id: <id>` to the search input — the engine will automatically iterate `season=1..N` on the indexer and backfill all available seasons. See the [Tasks](tasks) doc for the full shape.
 
 ## "Empty response" when testing an indexer
 
