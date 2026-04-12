@@ -14,6 +14,7 @@ from trove.clients.base import (
     AddOptions,
     ClientError,
     ClientType,
+    DownloadClient,
     Protocol,
     Release,
     TorrentClient,
@@ -163,6 +164,26 @@ def score_hit(
         score += math.log1p(hit.seeders) * 5
 
     return score
+
+
+def compute_quality_tier(
+    hit: search_service.SearchHit,
+    profile: dict[str, Any] | None = None,
+) -> int:
+    """Return the integer quality tier for a release title.
+
+    Uses the profile's quality_tiers table when available, otherwise
+    the hardcoded defaults. The tier value is what gets stored in
+    ``seen_release.quality_tier`` and compared against the task's
+    ``upgrade_until_tier`` cutoff.
+    """
+    title = hit.title.lower()
+    table = (
+        {k: int(v) for k, v in (profile.get("quality_tiers") or {}).items()}
+        if profile
+        else _QUALITY_TIERS
+    )
+    return _match_tier(title, table)
 
 
 def _seen_key(release: search_service.SearchHit) -> str:
@@ -387,6 +408,39 @@ async def _send_to_clients(
     return _SendOutcome(ok=False, message="no output accepted")
 
 
+async def _remove_from_client(
+    session: Session,
+    seen: SeenReleaseRow,
+    logger: io.StringIO,
+) -> bool:
+    """Remove a previously-grabbed release from its download client.
+
+    Returns ``True`` if the removal succeeded (or the item was already
+    gone). Used by the upgrade path to evict lower-quality grabs.
+    """
+    if not seen.client_id or not seen.grabbed_identifier:
+        logger.write(f"  upgrade: cannot remove '{seen.title}' — no client/identifier\n")
+        return False
+    client_row = session.get(Client, seen.client_id)
+    if client_row is None:
+        logger.write(f"  upgrade: client id={seen.client_id} not found\n")
+        return False
+    try:
+        driver: DownloadClient = client_registry.build_driver(client_row)
+    except ClientError as e:
+        logger.write(f"  upgrade: build driver failed: {e}\n")
+        return False
+    try:
+        ok = await driver.remove_download(seen.grabbed_identifier, delete_data=True)
+        logger.write(f"  upgrade: remove '{seen.title}' from {client_row.name}: {ok}\n")
+        return ok
+    except ClientError as e:
+        logger.write(f"  upgrade: remove failed: {e}\n")
+        return False
+    finally:
+        await driver.close()
+
+
 async def run_task(
     session: Session,
     task: TaskRow,
@@ -604,6 +658,17 @@ async def run_task(
                 reverse=True,
             )
 
+            # Upgrade configuration — per-task opt-in via filters.
+            upgrades_enabled = bool(filters.get("enable_upgrades"))
+            upgrade_until_tier = int(filters.get("upgrade_until_tier") or 0)
+            max_upgrades = int(filters.get("max_upgrades_per_run") or 3)
+            upgrades_this_run = 0
+            if upgrades_enabled:
+                logger.write(
+                    f"  upgrades: enabled (until_tier={upgrade_until_tier}, "
+                    f"max={max_upgrades}/run)\n"
+                )
+
             for hit in hits:
                 considered += 1
                 ok, reason = _pass_filter(hit, filters)
@@ -614,15 +679,114 @@ async def run_task(
                 if key in grabbed_keys:
                     logger.write(f"  skip '{hit.title}': dup within run\n")
                     continue
+
+                hit_score = score_hit(
+                    hit,
+                    prefer_quality=prefer_quality_str,
+                    max_size_mb=max_size_mb_cfg,
+                    profile=active_profile,
+                )
+                hit_tier = compute_quality_tier(hit, active_profile)
+
                 existing = session.exec(
                     select(SeenReleaseRow)
                     .where(SeenReleaseRow.task_id == task.id)
                     .where(SeenReleaseRow.key == key)
                     .where(SeenReleaseRow.outcome == "sent")
                 ).first()
+
                 if existing is not None:
-                    logger.write(f"  skip '{hit.title}': already grabbed\n")
+                    # Already grabbed — check if we should upgrade.
+                    if not upgrades_enabled:
+                        logger.write(f"  skip '{hit.title}': already grabbed\n")
+                        continue
+                    if upgrades_this_run >= max_upgrades:
+                        logger.write(
+                            f"  skip '{hit.title}': upgrade throttle "
+                            f"({upgrades_this_run}/{max_upgrades})\n"
+                        )
+                        continue
+                    existing_tier = existing.quality_tier or 0
+                    existing_score = existing.quality_score or 0.0
+                    if existing_tier >= upgrade_until_tier and upgrade_until_tier > 0:
+                        logger.write(
+                            f"  skip '{hit.title}': already at target tier "
+                            f"({existing_tier}>={upgrade_until_tier})\n"
+                        )
+                        continue
+                    if hit_score <= existing_score:
+                        logger.write(
+                            f"  skip '{hit.title}': not better "
+                            f"(score {hit_score:.0f} <= {existing_score:.0f})\n"
+                        )
+                        continue
+
+                    # This hit is genuinely better — attempt upgrade.
+                    logger.write(
+                        f"  UPGRADE '{existing.title}' (tier={existing_tier}, "
+                        f"score={existing_score:.0f}) -> '{hit.title}' "
+                        f"(tier={hit_tier}, score={hit_score:.0f})\n"
+                    )
+                    if dry_run:
+                        logger.write(f"  [dry-run] would upgrade '{hit.title}'\n")
+                        grabbed_keys.add(key)
+                        accepted += 1
+                        upgrades_this_run += 1
+                        continue
+
+                    # Remove old release from client.
+                    removed = await _remove_from_client(session, existing, logger)
+                    if not removed:
+                        logger.write("  upgrade: skipping — could not remove old release\n")
+                        continue
+
+                    # Send new release.
+                    outcome = await _send_to_clients(session, hit, outputs, logger)
+                    # Mark old release as upgraded.
+                    existing.outcome = "upgraded"
+                    session.add(existing)
+                    seen = SeenReleaseRow(
+                        task_id=task.id or 0,
+                        key=key,
+                        title=hit.title,
+                        outcome="sent" if outcome.ok else "failed",
+                        reason=outcome.message[:512],
+                        client_id=outcome.client_id,
+                        grabbed_identifier=outcome.identifier,
+                        download_status="queued" if outcome.ok and outcome.identifier else None,
+                        quality_score=hit_score,
+                        quality_tier=hit_tier,
+                        upgraded_from_id=existing.id,
+                    )
+                    session.add(seen)
+                    if outcome.ok:
+                        grabbed_keys.add(key)
+                        accepted += 1
+                        upgrades_this_run += 1
+                        await notification_service.dispatch(
+                            session,
+                            notification_service.Event(
+                                kind="task.upgraded",
+                                title=f"Upgraded: {hit.title[:120]}",
+                                description=(
+                                    f"Replaced **{existing.title[:80]}** "
+                                    f"(tier {existing_tier}) with "
+                                    f"**{hit.title[:80]}** (tier {hit_tier}) "
+                                    f"via task **{task.name}**."
+                                ),
+                                fields={
+                                    "Task": task.name,
+                                    "Old": existing.title[:100],
+                                    "New": hit.title[:100],
+                                    "Client": outcome.message,
+                                    "Quality": f"tier {existing_tier} -> {hit_tier}",
+                                    "Score": f"{existing_score:.0f} -> {hit_score:.0f}",
+                                },
+                            ),
+                        )
                     continue
+
+                # Fresh grab — no existing release for this key.
                 if dry_run:
                     logger.write(f"  [dry-run] would send '{hit.title}'\n")
                     grabbed_keys.add(key)
@@ -638,6 +802,8 @@ async def run_task(
                     client_id=outcome.client_id,
                     grabbed_identifier=outcome.identifier,
                     download_status="queued" if outcome.ok and outcome.identifier else None,
+                    quality_score=hit_score,
+                    quality_tier=hit_tier,
                 )
                 session.add(seen)
                 if outcome.ok:

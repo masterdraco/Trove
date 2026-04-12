@@ -118,6 +118,24 @@ class SabnzbdClient(UsenetClient):
         identifier = nzo_ids[0] if nzo_ids else None
         return AddResult(ok=bool(body.get("status", True)), identifier=identifier)
 
+    async def remove_download(self, identifier: str, *, delete_data: bool = True) -> bool:
+        # Try removing from active queue first, then history.
+        del_files = "del_files" if delete_data else ""
+        try:
+            await self._get(
+                {"mode": "queue", "name": "delete", "value": identifier, "del_files": del_files}
+            )
+            return True
+        except ClientError:
+            pass
+        try:
+            await self._get(
+                {"mode": "history", "name": "delete", "value": identifier, "del_files": del_files}
+            )
+            return True
+        except ClientError:
+            return False
+
     async def get_state(self, identifier: str) -> DownloadState:
         """Resolve a SABnzbd nzo_id to a DownloadState.
 

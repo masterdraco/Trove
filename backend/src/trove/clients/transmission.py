@@ -124,6 +124,16 @@ class TransmissionClient(TorrentClient):
             message="added" if "torrent-added" in result else "duplicate",
         )
 
+    async def remove_download(self, identifier: str, *, delete_data: bool = True) -> bool:
+        try:
+            await self._rpc(
+                "torrent-remove",
+                {"ids": [identifier], "delete-local-data": delete_data},
+            )
+        except ClientError:
+            return False
+        return True
+
     async def get_state(self, identifier: str) -> DownloadState:
         # Transmission torrent-get accepts hashString or id as the row
         # selector. We stored whichever one was available at add-time.

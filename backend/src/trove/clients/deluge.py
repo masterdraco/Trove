@@ -123,6 +123,14 @@ class DelugeClient(TorrentClient):
 
         return AddResult(ok=True, identifier=str(torrent_id), message="added")
 
+    async def remove_download(self, identifier: str, *, delete_data: bool = True) -> bool:
+        await self._ensure_login()
+        try:
+            result = await self._call("core.remove_torrent", [identifier, delete_data])
+        except ClientError:
+            return False
+        return bool(result)
+
     async def get_state(self, identifier: str) -> DownloadState:
         await self._ensure_login()
         try:

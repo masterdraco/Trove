@@ -63,3 +63,7 @@ class SeenReleaseRow(SQLModel, table=True):
     download_eta_seconds: int | None = Field(default=None)
     download_error_message: str | None = Field(default=None, max_length=512)
     download_state_at: datetime | None = Field(default=None)
+    # Quality upgrade tracking — populated since v0.8.0.
+    quality_score: float | None = Field(default=None)
+    quality_tier: int | None = Field(default=None)
+    upgraded_from_id: int | None = Field(default=None, foreign_key="seen_release.id")

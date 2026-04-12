@@ -136,6 +136,19 @@ class DownloadClient(abc.ABC):
         """
         return DownloadState(status=DownloadStatus.UNKNOWN)
 
+    async def remove_download(self, identifier: str, *, delete_data: bool = True) -> bool:
+        """Remove a previously-added download from the client.
+
+        Returns ``True`` if the item was found and removed, ``False`` if
+        it was already gone. Used by the quality upgrade path to evict
+        a lower-quality grab before replacing it with a better one.
+
+        ``delete_data`` controls whether files on disk are also removed
+        (default ``True``). Subclasses that don't support this flag
+        should always delete data.
+        """
+        return False
+
     async def close(self) -> None:
         """Release any resources (http clients, sessions). Safe to call repeatedly."""
         return None

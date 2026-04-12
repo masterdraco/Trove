@@ -40,6 +40,7 @@ log = structlog.get_logger()
 
 EVENT_KINDS: tuple[str, ...] = (
     "task.grabbed",
+    "task.upgraded",
     "task.send_failed",
     "task.error",
     "download.started",
@@ -59,6 +60,7 @@ PROVIDER_TYPES: tuple[str, ...] = (
 # Discord embed colors (decimal).
 _COLORS = {
     "task.grabbed": 0x3498DB,
+    "task.upgraded": 0x9B59B6,
     "task.send_failed": 0xE74C3C,
     "task.error": 0xE74C3C,
     "download.started": 0x95A5A6,

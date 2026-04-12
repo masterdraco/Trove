@@ -53,6 +53,21 @@ class TaskRunOut(BaseModel):
     log: str
 
 
+class SeenReleaseOut(BaseModel):
+    id: int
+    task_id: int
+    key: str
+    title: str
+    seen_at: datetime
+    outcome: str
+    reason: str | None
+    client_id: int | None
+    download_status: str | None
+    quality_score: float | None
+    quality_tier: int | None
+    upgraded_from_id: int | None
+
+
 def _to_out(row: TaskRow) -> TaskOut:
     assert row.id is not None
     return TaskOut(
@@ -200,6 +215,42 @@ async def list_runs(
             accepted=r.accepted,
             dry_run=r.dry_run,
             log=r.log,
+        )
+        for r in rows
+    ]
+
+
+@router.get("/{task_id}/seen-releases", response_model=list[SeenReleaseOut])
+async def list_seen_releases(
+    task_id: int,
+    outcome: str | None = None,
+    limit: int = 100,
+    session: Session = Depends(db_session),
+    _user: User = Depends(current_user),
+) -> list[SeenReleaseOut]:
+    stmt = (
+        select(SeenReleaseRow)
+        .where(SeenReleaseRow.task_id == task_id)
+        .order_by(SeenReleaseRow.seen_at.desc())  # type: ignore[attr-defined]
+        .limit(limit)
+    )
+    if outcome:
+        stmt = stmt.where(SeenReleaseRow.outcome == outcome)
+    rows = session.exec(stmt).all()
+    return [
+        SeenReleaseOut(
+            id=r.id or 0,
+            task_id=r.task_id,
+            key=r.key,
+            title=r.title,
+            seen_at=r.seen_at,
+            outcome=r.outcome,
+            reason=r.reason,
+            client_id=r.client_id,
+            download_status=r.download_status,
+            quality_score=r.quality_score,
+            quality_tier=r.quality_tier,
+            upgraded_from_id=r.upgraded_from_id,
         )
         for r in rows
     ]

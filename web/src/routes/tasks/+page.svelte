@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type TaskOut, type TaskRunOut } from "$lib/api";
-  import { Plus, Play, FlaskConical, Trash2, ListChecks } from "lucide-svelte";
+  import { api, type TaskOut, type TaskRunOut, type SeenReleaseOut } from "$lib/api";
+  import { Plus, Play, FlaskConical, Trash2, ListChecks, ArrowUpCircle } from "lucide-svelte";
 
   let tasks = $state<TaskOut[]>([]);
   let loading = $state(true);
   let selected = $state<TaskOut | null>(null);
   let runs = $state<TaskRunOut[]>([]);
+  let seenReleases = $state<SeenReleaseOut[]>([]);
   let showForm = $state(false);
   let saving = $state(false);
   let running = $state(false);
@@ -41,6 +42,7 @@ outputs:
 
   async function loadRuns(task: TaskOut) {
     runs = await api.tasks.runs(task.id);
+    seenReleases = await api.tasks.seenReleases(task.id);
   }
 
   async function select_(task: TaskOut) {
@@ -102,6 +104,29 @@ outputs:
     } finally {
       running = false;
     }
+  }
+
+  function tierLabel(tier: number | null): string {
+    if (tier === null || tier === 0) return "?";
+    if (tier >= 4) return "2160p";
+    if (tier === 3) return "1080p";
+    if (tier === 2) return "720p";
+    return "SD";
+  }
+
+  function tierColor(tier: number | null): string {
+    if (tier === null || tier === 0) return "text-muted-foreground";
+    if (tier >= 4) return "text-purple-400";
+    if (tier === 3) return "text-blue-400";
+    if (tier === 2) return "text-amber-400";
+    return "text-muted-foreground";
+  }
+
+  function outcomeColor(outcome: string): string {
+    if (outcome === "sent") return "text-success";
+    if (outcome === "upgraded") return "text-purple-400";
+    if (outcome === "failed") return "text-destructive";
+    return "text-muted-foreground";
   }
 
   async function remove(task: TaskOut) {
@@ -274,6 +299,36 @@ outputs:
           </div>
         </div>
       {/if}
+      {#if selected && seenReleases.length > 0}
+        <div class="rounded-xl border border-border bg-card p-5">
+          <div class="flex items-center gap-2">
+            <ArrowUpCircle class="h-4 w-4 text-purple-400" />
+            <h3 class="text-sm font-semibold">Grabbed releases</h3>
+            <span class="text-xs text-muted-foreground">({seenReleases.length})</span>
+          </div>
+          <div class="mt-3 space-y-1">
+            {#each seenReleases as sr (sr.id)}
+              <div class="flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-xs">
+                <span class="font-semibold {outcomeColor(sr.outcome)}">{sr.outcome}</span>
+                <span class="min-w-0 flex-1 truncate font-mono" title={sr.title}>{sr.title}</span>
+                {#if sr.quality_tier !== null}
+                  <span class="rounded-full border border-border px-2 py-0.5 font-semibold {tierColor(sr.quality_tier)}">{tierLabel(sr.quality_tier)}</span>
+                {/if}
+                {#if sr.quality_score !== null}
+                  <span class="text-muted-foreground" title="Quality score">{sr.quality_score.toFixed(0)}pt</span>
+                {/if}
+                {#if sr.upgraded_from_id}
+                  <span class="text-purple-400" title="Upgraded from a previous release">upgrade</span>
+                {/if}
+                {#if sr.download_status}
+                  <span class="text-muted-foreground">{sr.download_status}</span>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
     {:else}
       <div class="rounded-xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">
         Select a task or create a new one.

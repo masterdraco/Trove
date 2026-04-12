@@ -164,6 +164,24 @@ class NzbgetClient(UsenetClient):
             message="added" if ok else "nzbget refused release",
         )
 
+    async def remove_download(self, identifier: str, *, delete_data: bool = True) -> bool:
+        try:
+            nzb_id = int(identifier)
+        except ValueError:
+            return False
+        # Try removing from active queue first, then history.
+        try:
+            result = await self._call("editqueue", ["GroupDelete", "", [nzb_id]])
+            if result:
+                return True
+        except ClientError:
+            pass
+        try:
+            result = await self._call("editqueue", ["HistoryDelete", "", [nzb_id]])
+            return bool(result)
+        except ClientError:
+            return False
+
     async def get_state(self, identifier: str) -> DownloadState:
         """Resolve an nzb_id back to a DownloadState.
 

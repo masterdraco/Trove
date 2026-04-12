@@ -20,6 +20,7 @@
 
   const ALL_EVENTS: NotificationEventKind[] = [
     "task.grabbed",
+    "task.upgraded",
     "task.send_failed",
     "task.error",
     "download.started",
@@ -30,6 +31,7 @@
 
   const EVENT_LABELS: Record<NotificationEventKind, string> = {
     "task.grabbed": "Task grabbed a release",
+    "task.upgraded": "Quality upgrade replaced a release",
     "task.send_failed": "Task couldn't send to any client",
     "task.error": "Task crashed with an error",
     "download.started": "Download started",

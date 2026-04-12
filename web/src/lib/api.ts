@@ -118,6 +118,7 @@ export type NotificationProviderType =
 
 export type NotificationEventKind =
   | "task.grabbed"
+  | "task.upgraded"
   | "task.send_failed"
   | "task.error"
   | "download.started"
@@ -277,6 +278,21 @@ export type TaskRunOut = {
   accepted: number;
   dry_run: boolean;
   log: string;
+};
+
+export type SeenReleaseOut = {
+  id: number;
+  task_id: number;
+  key: string;
+  title: string;
+  seen_at: string;
+  outcome: string;
+  reason: string | null;
+  client_id: number | null;
+  download_status: string | null;
+  quality_score: number | null;
+  quality_tier: number | null;
+  upgraded_from_id: number | null;
 };
 
 async function request<T>(
@@ -776,6 +792,12 @@ export const api = {
     remove: (id: number) => request<void>(`/api/tasks/${id}`, { method: "DELETE" }),
     run: (id: number, dryRun = false) =>
       request<TaskRunOut>(`/api/tasks/${id}/run?dry_run=${dryRun}`, { method: "POST" }),
-    runs: (id: number) => request<TaskRunOut[]>(`/api/tasks/${id}/runs`)
+    runs: (id: number) => request<TaskRunOut[]>(`/api/tasks/${id}/runs`),
+    seenReleases: (id: number, outcome?: string) => {
+      const params = new URLSearchParams();
+      if (outcome) params.set("outcome", outcome);
+      const qs = params.toString();
+      return request<SeenReleaseOut[]>(`/api/tasks/${id}/seen-releases${qs ? `?${qs}` : ""}`);
+    }
   }
 };
