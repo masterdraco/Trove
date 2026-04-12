@@ -22,7 +22,10 @@
     TrendingUp,
     ChevronDown,
     Info,
-    Calendar
+    Calendar,
+    Bell,
+    Award,
+    Archive
   } from "lucide-svelte";
 
   type NavChild = {
@@ -59,7 +62,10 @@
       children: [
         { href: "/clients", label: "Clients", icon: Download, color: "text-emerald-400" },
         { href: "/indexers", label: "Indexers", icon: Database, color: "text-blue-400" },
-        { href: "/feeds", label: "Feeds", icon: Rss, color: "text-orange-400" }
+        { href: "/feeds", label: "Feeds", icon: Rss, color: "text-orange-400" },
+        { href: "/notifications", label: "Notifications", icon: Bell, color: "text-yellow-400" },
+        { href: "/quality-profiles", label: "Quality Profiles", icon: Award, color: "text-purple-400" },
+        { href: "/backup", label: "Backup", icon: Archive, color: "text-amber-400" }
       ]
     },
     { href: "/about", label: "About", icon: Info, color: "text-amber-400" }
