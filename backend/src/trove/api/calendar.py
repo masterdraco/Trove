@@ -11,7 +11,7 @@ from __future__ import annotations
 import contextlib
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
@@ -20,6 +20,8 @@ from trove.models.task import SeenReleaseRow
 from trove.models.user import User
 from trove.models.watchlist import WatchlistItemRow
 from trove.services import tmdb
+
+POSTER_SIZE = "w342"
 
 router = APIRouter()
 
@@ -34,6 +36,9 @@ class CalendarEvent(BaseModel):
     episode_title: str | None = None
     poster_url: str | None = None
     grab_state: str = "pending"  # pending | grabbed | missed
+    source: str = "watchlist"  # watchlist | tmdb
+    overview: str | None = None
+    rating: float | None = None
 
 
 class CalendarResponse(BaseModel):
@@ -44,6 +49,7 @@ class CalendarResponse(BaseModel):
 @router.get("", response_model=CalendarResponse)
 async def get_calendar(
     month: str | None = None,
+    include_tmdb: bool = Query(False, description="Include upcoming TMDB releases"),
     session: Session = Depends(db_session),
     _user: User = Depends(current_user),
 ) -> CalendarResponse:
@@ -60,8 +66,6 @@ async def get_calendar(
         ) from e
 
     items = session.exec(select(WatchlistItemRow)).all()
-    if not items:
-        return CalendarResponse(month=target_month, events=[])
 
     # Collect all seen_release keys so we can check grab state cheaply.
     seen_keys: set[str] = set()
@@ -76,6 +80,16 @@ async def get_calendar(
             _collect_movie_events(item, target_year, target_mon, seen_keys, events)
         elif item.kind == "series" and item.tmdb_id and item.tmdb_type == "tv":
             await _collect_series_events(item, target_year, target_mon, seen_keys, events)
+
+    # Merge TMDB discover releases if requested.
+    if include_tmdb and tmdb.is_configured():
+        watchlist_tmdb_ids = {item.tmdb_id for item in items if item.tmdb_id}
+        await _collect_tmdb_discover(
+            target_year,
+            target_mon,
+            watchlist_tmdb_ids,
+            events,
+        )
 
     events.sort(key=lambda e: e.date)
     return CalendarResponse(month=target_month, events=events)
@@ -214,3 +228,92 @@ async def _collect_series_events(
                     grab_state=_grab_state(dedup_key, seen_keys, str(air_date)),
                 )
             )
+
+
+async def _collect_tmdb_discover(
+    year: int,
+    month: int,
+    watchlist_tmdb_ids: set[int],
+    events: list[CalendarEvent],
+) -> None:
+    """Fetch upcoming movies and on-air TV from TMDB for the target month.
+
+    Skips anything already on the watchlist to avoid duplicates.
+    """
+    month_start = f"{year}-{month:02d}-01"
+    month_end = f"{year + 1}-01-01" if month == 12 else f"{year}-{month + 1:02d}-01"
+
+    # Upcoming movies — use discover with date range for the target month.
+    try:
+        data = await tmdb._request(
+            "/discover/movie",
+            params={
+                "primary_release_date.gte": month_start,
+                "primary_release_date.lte": month_end,
+                "sort_by": "primary_release_date.asc",
+                "with_release_type": "2|3",
+                "page": 1,
+            },
+        )
+        for r in data.get("results") or []:
+            tid = int(r.get("id") or 0)
+            if tid in watchlist_tmdb_ids or tid == 0:
+                continue
+            rd = r.get("release_date")
+            if not rd or not _in_month(rd, year, month):
+                continue
+            poster = r.get("poster_path")
+            events.append(
+                CalendarEvent(
+                    date=rd,
+                    title=r.get("title") or "?",
+                    kind="movie",
+                    tmdb_id=tid,
+                    poster_url=f"https://image.tmdb.org/t/p/{POSTER_SIZE}{poster}"
+                    if poster
+                    else None,
+                    grab_state="discover",
+                    source="tmdb",
+                    overview=(r.get("overview") or "")[:300] or None,
+                    rating=r.get("vote_average"),
+                )
+            )
+    except tmdb.TmdbError:
+        pass
+
+    # On-the-air TV — shows airing this month.
+    try:
+        data = await tmdb._request(
+            "/discover/tv",
+            params={
+                "air_date.gte": month_start,
+                "air_date.lte": month_end,
+                "sort_by": "first_air_date.asc",
+                "page": 1,
+            },
+        )
+        for r in data.get("results") or []:
+            tid = int(r.get("id") or 0)
+            if tid in watchlist_tmdb_ids or tid == 0:
+                continue
+            ad = r.get("first_air_date")
+            if not ad or not _in_month(ad, year, month):
+                continue
+            poster = r.get("poster_path")
+            events.append(
+                CalendarEvent(
+                    date=ad,
+                    title=r.get("name") or r.get("original_name") or "?",
+                    kind="tv",
+                    tmdb_id=tid,
+                    poster_url=f"https://image.tmdb.org/t/p/{POSTER_SIZE}{poster}"
+                    if poster
+                    else None,
+                    grab_state="discover",
+                    source="tmdb",
+                    overview=(r.get("overview") or "")[:300] or None,
+                    rating=r.get("vote_average"),
+                )
+            )
+    except tmdb.TmdbError:
+        pass

@@ -176,7 +176,10 @@ export type CalendarEvent = {
   episode: number | null;
   episode_title: string | null;
   poster_url: string | null;
-  grab_state: "pending" | "grabbed" | "missed";
+  grab_state: "pending" | "grabbed" | "missed" | "discover";
+  source: "watchlist" | "tmdb";
+  overview: string | null;
+  rating: number | null;
 };
 
 export type CalendarResponse = {
@@ -407,8 +410,13 @@ export const api = {
       )
   },
 
-  calendar: (month?: string) =>
-    request<CalendarResponse>(`/api/calendar${month ? `?month=${month}` : ""}`),
+  calendar: (month?: string, includeTmdb = false) => {
+    const params = new URLSearchParams();
+    if (month) params.set("month", month);
+    if (includeTmdb) params.set("include_tmdb", "true");
+    const qs = params.toString();
+    return request<CalendarResponse>(`/api/calendar${qs ? `?${qs}` : ""}`);
+  },
 
   qualityProfiles: {
     list: () => request<QualityProfilesOut>("/api/quality-profiles"),
