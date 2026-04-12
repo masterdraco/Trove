@@ -165,6 +165,23 @@ export type QualityProfilesOut = {
   profiles: Record<string, QualityProfile>;
 };
 
+export type CalendarEvent = {
+  date: string;
+  title: string;
+  kind: "movie" | "tv";
+  tmdb_id: number | null;
+  season: number | null;
+  episode: number | null;
+  episode_title: string | null;
+  poster_url: string | null;
+  grab_state: "pending" | "grabbed" | "missed";
+};
+
+export type CalendarResponse = {
+  month: string;
+  events: CalendarEvent[];
+};
+
 export type SearchHit = {
   title: string;
   protocol: Protocol;
@@ -352,6 +369,9 @@ export const api = {
         { method: "POST", body: JSON.stringify(payload) }
       )
   },
+
+  calendar: (month?: string) =>
+    request<CalendarResponse>(`/api/calendar${month ? `?month=${month}` : ""}`),
 
   qualityProfiles: {
     list: () => request<QualityProfilesOut>("/api/quality-profiles"),

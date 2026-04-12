@@ -15,6 +15,7 @@ from trove.api import ai as ai_router
 from trove.api import app_settings as app_settings_router
 from trove.api import auth as auth_router
 from trove.api import backup as backup_router
+from trove.api import calendar as calendar_router
 from trove.api import clients as clients_router
 from trove.api import discover as discover_router
 from trove.api import docs as docs_router
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(discover_router.router, prefix="/api/discover", tags=["discover"])
     app.include_router(system_router.router, prefix="/api/system", tags=["system"])
     app.include_router(backup_router.router, prefix="/api/backup", tags=["backup"])
+    app.include_router(calendar_router.router, prefix="/api/calendar", tags=["calendar"])
     app.include_router(app_settings_router.router, prefix="/api/settings", tags=["settings"])
     app.include_router(logs_router.router, prefix="/api/logs", tags=["logs"])
     app.include_router(

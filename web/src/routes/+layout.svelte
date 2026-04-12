@@ -21,7 +21,8 @@
     BookOpen,
     TrendingUp,
     ChevronDown,
-    Info
+    Info,
+    Calendar
   } from "lucide-svelte";
 
   type NavChild = {
@@ -45,6 +46,7 @@
     { href: "/search", label: "Search", icon: Search, color: "text-cyan-400" },
     { href: "/tasks", label: "Tasks", icon: ListChecks, color: "text-violet-400" },
     { href: "/watchlist", label: "Watchlist", icon: Eye, color: "text-pink-400" },
+    { href: "/calendar", label: "Calendar", icon: Calendar, color: "text-indigo-400" },
     { href: "/ai", label: "AI", icon: Sparkles, color: "text-fuchsia-400" },
     { href: "/history", label: "History", icon: History, color: "text-amber-400" },
     { href: "/logs", label: "Logs", icon: ScrollText, color: "text-slate-400" },
