@@ -47,7 +47,13 @@ export type ClientTestResult = {
   categories: string[];
 };
 
-export type IndexerType = "newznab" | "torznab" | "cardigann" | "custom";
+export type IndexerType =
+  | "newznab"
+  | "torznab"
+  | "cardigann"
+  | "unit3d"
+  | "rartracker"
+  | "custom";
 export type Category = "movies" | "tv" | "music" | "books" | "anime" | "other";
 
 export type IndexerOut = {
@@ -68,7 +74,7 @@ export type IndexerCreate = {
   type: IndexerType;
   protocol: Protocol;
   base_url: string;
-  credentials: Record<string, string>;
+  credentials: Record<string, unknown>;
   definition_yaml?: string | null;
   enabled?: boolean;
   priority?: number;

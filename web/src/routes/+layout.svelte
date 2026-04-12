@@ -20,7 +20,8 @@
     Rss,
     BookOpen,
     TrendingUp,
-    ChevronDown
+    ChevronDown,
+    Info
   } from "lucide-svelte";
 
   type NavChild = {
@@ -58,7 +59,8 @@
         { href: "/indexers", label: "Indexers", icon: Database, color: "text-blue-400" },
         { href: "/feeds", label: "Feeds", icon: Rss, color: "text-orange-400" }
       ]
-    }
+    },
+    { href: "/about", label: "About", icon: Info, color: "text-amber-400" }
   ];
 
   // Manually-toggled groups. A group is considered expanded if it's in
