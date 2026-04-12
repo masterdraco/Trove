@@ -212,8 +212,16 @@ async def popular(media: str = "movie", limit: int = 20) -> list[TmdbItem]:
 
 
 async def upcoming_movies(limit: int = 20) -> list[TmdbItem]:
+    from datetime import date as _date
+
+    today = _date.today().isoformat()
     pages = max(1, (limit + 19) // 20)
-    items = await _multi_page("/movie/upcoming", pages, _coerce_movie)
+    items = await _multi_page(
+        "/movie/upcoming",
+        pages,
+        _coerce_movie,
+        params={"primary_release_date.gte": today},
+    )
     return items[:limit]
 
 
