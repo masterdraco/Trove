@@ -242,6 +242,111 @@ async def agent_execute(
             message="Open the Search page with this query",
         )
 
+    if intent == "bulk_tmdb":
+        from trove.ai import agent as ai_agent
+
+        kind = params.get("kind", "movie")
+        quality = params.get("quality")
+        items = params.get("items") or []
+        if not isinstance(items, list) or not items:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="missing items",
+            )
+        clients = ai_agent._pick_default_clients(session)
+        if not clients:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="no_clients_configured",
+            )
+        output_names = [c.name for c in clients]
+
+        added = 0
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            tmdb_id = it.get("tmdb_id")
+            title = it.get("title")
+            if not tmdb_id or not title:
+                continue
+            # Skip if already on watchlist
+            exists = session.exec(
+                select(WatchlistItemRow).where(WatchlistItemRow.tmdb_id == tmdb_id)
+            ).first()
+            if exists is not None:
+                continue
+            wl = WatchlistItemRow(
+                kind="movie" if kind == "movie" else "series",
+                title=title,
+                year=it.get("year"),
+                target_quality=quality,
+                tmdb_id=tmdb_id,
+                tmdb_type=kind,
+                poster_path=it.get("poster_path"),
+                backdrop_path=it.get("backdrop_path"),
+                overview=it.get("overview"),
+                release_date=it.get("release_date"),
+                rating=it.get("rating"),
+                discovery_status="pending",
+            )
+            session.add(wl)
+            session.commit()
+            session.refresh(wl)
+
+            # Auto-promote: create the download task
+            if wl.kind == "series":
+                task_name = ai_agent._slugify(wl.title)
+                config_yaml = ai_agent._build_series_task_yaml(
+                    wl.title,
+                    wl.target_quality,
+                    output_names,
+                    tmdb_id=wl.tmdb_id,
+                )
+                schedule_cron = "0 * * * *"
+            else:
+                slug_parts = [wl.title]
+                if wl.year:
+                    slug_parts.append(str(wl.year))
+                task_name = ai_agent._slugify("-".join(slug_parts))
+                config_yaml = ai_agent._build_movie_task_yaml(
+                    wl.title,
+                    wl.year,
+                    wl.target_quality,
+                    output_names,
+                    tmdb_id=wl.tmdb_id,
+                )
+                schedule_cron = "0 */2 * * *"
+
+            existing_task = session.exec(select(TaskRow).where(TaskRow.name == task_name)).first()
+            if existing_task is not None:
+                task = existing_task
+                task.config_yaml = config_yaml
+                task.schedule_cron = schedule_cron
+                task.enabled = True
+            else:
+                task = TaskRow(
+                    name=task_name,
+                    enabled=True,
+                    schedule_cron=schedule_cron,
+                    config_yaml=config_yaml,
+                )
+                session.add(task)
+            session.commit()
+            session.refresh(task)
+            wl.discovery_task_id = task.id
+            wl.discovery_status = "promoted"
+            session.add(wl)
+            session.commit()
+            scheduler.schedule_task(task)
+            added += 1
+
+        return AgentExecuteResponse(
+            ok=True,
+            kind="bulk_tmdb",
+            resource_id=None,
+            message=f"Added {added} {kind}s to watchlist and created download tasks",
+        )
+
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"cannot execute intent '{intent}'",

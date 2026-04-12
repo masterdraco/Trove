@@ -56,7 +56,21 @@ regardless of source.
 5. add_to_watchlist — user wants to track a title but not auto-download yet.
    fields: kind ("series"|"movie"), title (string), year (int, optional)
 
-6. chat — user is asking a general question, small talk, or something unsupported.
+6. bulk_tmdb — user wants to bulk-add movies/TV from TMDB to the watchlist based on
+   metadata criteria (rating, release date, popularity). This queries TMDB directly
+   rather than reading from RSS feeds. Each match is added to the watchlist and
+   auto-promoted to a download task.
+   fields:
+     kind ("movie"|"tv", required),
+     rating_min (float, optional, e.g. 6.0 for "rating over 6"),
+     date_from (string, optional, "today" or YYYY-MM-DD — earliest release date),
+     date_to (string, optional, YYYY-MM-DD — latest release date),
+     year_min (int, optional),
+     year_max (int, optional),
+     quality (string, optional: "2160p"|"1080p"|"720p"|"best"),
+     limit (int, optional, default 50, max 100)
+
+7. chat — user is asking a general question, small talk, or something unsupported.
    fields: message (string, your plain-text reply)
 
 Examples:
@@ -101,6 +115,18 @@ User: remember severance, i might grab it later
 
 User: why did last night's run fail
 {"intent": "chat", "params": {"message": "Check the task history page — each run shows a detailed trace."}}
+
+User: hent alle film fra idag og frem der har en rating på over 6 i bedst mulige kvalitet
+{"intent": "bulk_tmdb", "params": {"kind": "movie", "rating_min": 6.0, "date_from": "today", "quality": "best"}}
+
+User: grab all highly rated movies from 2024 in 1080p
+{"intent": "bulk_tmdb", "params": {"kind": "movie", "year_min": 2024, "rating_min": 7.0, "quality": "1080p"}}
+
+User: add all upcoming movies with rating over 7 to my watchlist
+{"intent": "bulk_tmdb", "params": {"kind": "movie", "rating_min": 7.0, "date_from": "today"}}
+
+User: download top 20 popular tv shows from this year
+{"intent": "bulk_tmdb", "params": {"kind": "tv", "year_min": 2026, "limit": 20}}
 
 Reply with JSON ONLY, starting with { and ending with }."""
 
@@ -825,6 +851,9 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
             warnings=warnings,
         )
 
+    if intent == "bulk_tmdb":
+        return await _propose_bulk_tmdb(session, params)
+
     return ProposedAction(
         intent="chat",
         params={},
@@ -832,3 +861,231 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
         requires_confirmation=False,
         message=f"Sorry, I don't know how to handle intent '{intent}' yet.",
     )
+
+
+async def _propose_bulk_tmdb(session: Session, params: dict[str, Any]) -> ProposedAction:
+    """Query TMDB discover and return a preview of movies/TV to bulk-add."""
+    from datetime import date
+
+    from trove.services import tmdb
+
+    if not tmdb.is_configured():
+        return ProposedAction(
+            intent="chat",
+            params={},
+            description="",
+            requires_confirmation=False,
+            message=(
+                "Bulk-add from TMDB needs a TMDB API token. Add one in **Settings → TMDB** first."
+            ),
+        )
+
+    kind = params.get("kind") if params.get("kind") in ("movie", "tv") else "movie"
+    rating_min = params.get("rating_min")
+    if isinstance(rating_min, int):
+        rating_min = float(rating_min)
+    if not isinstance(rating_min, float):
+        rating_min = None
+
+    date_from_raw = params.get("date_from")
+    date_from: str | None = None
+    if isinstance(date_from_raw, str):
+        if date_from_raw.lower() == "today":
+            date_from = date.today().isoformat()
+        elif len(date_from_raw) == 10:
+            date_from = date_from_raw
+
+    date_to_raw = params.get("date_to")
+    date_to: str | None = None
+    if isinstance(date_to_raw, str) and len(date_to_raw) == 10:
+        date_to = date_to_raw
+
+    year_min = params.get("year_min") if isinstance(params.get("year_min"), int) else None
+    year_max = params.get("year_max") if isinstance(params.get("year_max"), int) else None
+    if year_min and not date_from:
+        date_from = f"{year_min}-01-01"
+    if year_max and not date_to:
+        date_to = f"{year_max}-12-31"
+
+    quality = params.get("quality")
+    if isinstance(quality, str):
+        quality = quality.lower().strip() or None
+    if quality == "best":
+        quality = "2160p"
+
+    limit = params.get("limit") if isinstance(params.get("limit"), int) else 50
+    limit = max(1, min(100, limit))
+
+    # Check watchlist is set up (needs clients)
+    clients = _pick_default_clients(session)
+    if not clients:
+        return ProposedAction(
+            intent="chat",
+            params={},
+            description="",
+            requires_confirmation=False,
+            message="Add a download client before bulk-adding movies.",
+        )
+
+    # Query TMDB discover
+    try:
+        items = await _tmdb_discover(
+            kind=kind,
+            rating_min=rating_min,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+        )
+    except tmdb.TmdbError as e:
+        return ProposedAction(
+            intent="chat",
+            params={},
+            description="",
+            requires_confirmation=False,
+            message=f"TMDB query failed: {e}",
+        )
+
+    # Filter out items already on the watchlist
+    from trove.models.watchlist import WatchlistItemRow
+
+    existing_ids = {
+        w.tmdb_id for w in session.exec(select(WatchlistItemRow)).all() if w.tmdb_id is not None
+    }
+    new_items = [i for i in items if i["tmdb_id"] not in existing_ids]
+
+    if not new_items:
+        return ProposedAction(
+            intent="chat",
+            params={},
+            description="",
+            requires_confirmation=False,
+            message=(
+                f"Found {len(items)} matching {kind}s on TMDB, but all of them are "
+                "already on your watchlist."
+            ),
+        )
+
+    # Build description
+    criteria: list[str] = []
+    if rating_min is not None:
+        criteria.append(f"rating ≥ {rating_min}")
+    if date_from:
+        criteria.append(f"released from {date_from}")
+    if date_to:
+        criteria.append(f"until {date_to}")
+    if quality:
+        criteria.append(f"quality {quality}")
+    criteria_text = ", ".join(criteria) if criteria else "no filters"
+
+    kind_label = "movies" if kind == "movie" else "TV shows"
+    sample = ", ".join(i["title"] for i in new_items[:5])
+    if len(new_items) > 5:
+        sample += f", and {len(new_items) - 5} more"
+
+    return ProposedAction(
+        intent="bulk_tmdb",
+        params={
+            "kind": kind,
+            "quality": quality,
+            "items": new_items,
+        },
+        description=(
+            f"Add **{len(new_items)}** {kind_label} from TMDB ({criteria_text}) "
+            f"to your watchlist and create download tasks for each.\n\n"
+            f"**Preview:** {sample}"
+        ),
+        preview={
+            "kind": kind,
+            "count": len(new_items),
+            "quality": quality,
+            "sample_titles": [i["title"] for i in new_items[:10]],
+        },
+    )
+
+
+async def _tmdb_discover(
+    kind: str,
+    rating_min: float | None,
+    date_from: str | None,
+    date_to: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Query TMDB /discover with filters. Returns a list of item dicts."""
+    from datetime import date, timedelta
+
+    from trove.services import tmdb
+
+    endpoint = "/discover/movie" if kind == "movie" else "/discover/tv"
+    params: dict[str, Any] = {
+        "sort_by": "popularity.desc",
+        "include_adult": "false",
+    }
+
+    # If filtering by rating, we need movies that have actually been rated.
+    # Brand-new releases have no votes yet, so a date_from of "today" would
+    # return nothing. Expand the range backwards by 180 days so recent
+    # well-rated releases come through too.
+    effective_date_from = date_from
+    if rating_min is not None and date_from:
+        try:
+            parsed = date.fromisoformat(date_from)
+            if parsed >= date.today() - timedelta(days=30):
+                effective_date_from = (parsed - timedelta(days=180)).isoformat()
+        except ValueError:
+            pass
+
+    if kind == "movie":
+        if effective_date_from:
+            params["primary_release_date.gte"] = effective_date_from
+        if date_to:
+            params["primary_release_date.lte"] = date_to
+    else:
+        if effective_date_from:
+            params["first_air_date.gte"] = effective_date_from
+        if date_to:
+            params["first_air_date.lte"] = date_to
+    if rating_min is not None:
+        params["vote_average.gte"] = rating_min
+        params["vote_count.gte"] = 20  # prevent tiny-sample-size 10/10s
+
+    results: list[dict[str, Any]] = []
+    pages_needed = max(1, (limit + 19) // 20)
+    for page in range(1, pages_needed + 1):
+        data = await tmdb._request(endpoint, {**params, "page": page})
+        for r in data.get("results") or []:
+            tid = int(r.get("id") or 0)
+            if tid == 0:
+                continue
+            title = r.get("title") if kind == "movie" else r.get("name")
+            if not title:
+                continue
+            release_date = r.get("release_date") if kind == "movie" else r.get("first_air_date")
+            import contextlib as _ctx
+
+            year: int | None = None
+            if release_date and len(release_date) >= 4:
+                with _ctx.suppress(ValueError):
+                    year = int(release_date[:4])
+            poster = r.get("poster_path")
+            backdrop = r.get("backdrop_path")
+            results.append(
+                {
+                    "tmdb_id": tid,
+                    "title": title,
+                    "year": year,
+                    "overview": (r.get("overview") or "")[:500] or None,
+                    "rating": r.get("vote_average"),
+                    "release_date": release_date,
+                    "poster_path": f"https://image.tmdb.org/t/p/w342{poster}" if poster else None,
+                    "backdrop_path": f"https://image.tmdb.org/t/p/w1280{backdrop}"
+                    if backdrop
+                    else None,
+                }
+            )
+            if len(results) >= limit:
+                break
+        if len(results) >= limit:
+            break
+        if page >= int(data.get("total_pages", 1)):
+            break
+    return results[:limit]
