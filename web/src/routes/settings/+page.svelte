@@ -21,7 +21,8 @@
     Rocket,
     Copy,
     Eye,
-    EyeOff
+    EyeOff,
+    Info
   } from "lucide-svelte";
 
   type AppSetting = Awaited<ReturnType<typeof api.appSettings.list>>[number];
@@ -1036,5 +1037,63 @@
       backup on the new host. All clients, indexers, feeds, tasks, and your original user
       account come with it.
     </p>
+  </div>
+
+  <!-- About -->
+  <div class="surface relative overflow-hidden p-6">
+    <div class="absolute inset-0 bg-gradient-to-br from-amber-500/5 via-transparent to-primary/10"></div>
+    <div class="relative">
+      <div class="flex items-center gap-2">
+        <Info class="h-5 w-5 text-amber-400" />
+        <h3 class="text-base font-semibold">About Trove</h3>
+      </div>
+      <p class="mt-2 text-sm text-muted-foreground">
+        Trove is a modern, self-hosted media automation hub — search across multiple
+        indexers, watch shows and movies, run hourly tasks, and (optionally) talk to
+        a local AI to manage it all.
+      </p>
+      <dl class="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+        <div class="flex items-center justify-between rounded-md border border-border/40 bg-background/40 px-3 py-2">
+          <dt class="text-muted-foreground">Version</dt>
+          <dd class="font-mono">{version ?? "—"}</dd>
+        </div>
+        <div class="flex items-center justify-between rounded-md border border-border/40 bg-background/40 px-3 py-2">
+          <dt class="text-muted-foreground">Developed by</dt>
+          <dd class="font-semibold">PowerData</dd>
+        </div>
+        <div class="flex items-center justify-between rounded-md border border-border/40 bg-background/40 px-3 py-2">
+          <dt class="text-muted-foreground">License</dt>
+          <dd class="font-mono">GPL-3.0-or-later</dd>
+        </div>
+        <div class="flex items-center justify-between rounded-md border border-border/40 bg-background/40 px-3 py-2">
+          <dt class="text-muted-foreground">Source</dt>
+          <dd>
+            <a
+              href="https://github.com/masterdraco/Trove"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="font-mono text-primary underline-offset-2 hover:underline"
+            >
+              github.com/masterdraco/Trove
+            </a>
+          </dd>
+        </div>
+      </dl>
+      <div class="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+        <p class="text-sm">
+          <strong>Like Trove?</strong> It's free and open source, but it's also a one-person
+          project built in evenings and weekends. If it saves you time, consider
+          buying a coffee — it keeps the late-night commits going.
+        </p>
+        <a
+          href="https://www.buymeacoffee.com/MasterDraco"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn-primary mt-3 inline-flex"
+        >
+          ☕ Buy me a coffee
+        </a>
+      </div>
+    </div>
   </div>
 </div>
