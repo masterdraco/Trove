@@ -321,7 +321,6 @@
         </p>
         <div class="mt-3 flex gap-2">
           <a href="/ai" class="btn-primary">Open chat</a>
-          <a href="/settings" class="btn-secondary">Settings</a>
         </div>
       </div>
     </div>

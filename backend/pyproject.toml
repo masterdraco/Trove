@@ -1,6 +1,6 @@
 [project]
 name = "trove"
-version = "0.3.11"
+version = "0.3.12"
 description = "A modern replacement for FlexGet with multi-indexer search, Usenet support, and optional local AI."
 readme = "../README.md"
 requires-python = ">=3.12"
