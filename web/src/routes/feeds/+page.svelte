@@ -11,7 +11,9 @@
     XCircle,
     RefreshCw,
     Eye,
-    Search
+    Search,
+    Power,
+    PowerOff
   } from "lucide-svelte";
 
   type Feed = Awaited<ReturnType<typeof api.feeds.list>>[number];
@@ -149,6 +151,11 @@
     await load();
   }
 
+  async function toggleEnabled(feed: Feed) {
+    await api.feeds.update(feed.id, { enabled: !feed.enabled });
+    await load();
+  }
+
   async function toggleExpand(feed: Feed) {
     if (expandedFeedId === feed.id) {
       expandedFeedId = null;
@@ -266,6 +273,20 @@
               </div>
             </button>
             <div class="flex shrink-0 flex-col gap-1">
+              <button
+                class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs hover:bg-muted"
+                class:text-muted-foreground={!feed.enabled}
+                onclick={() => toggleEnabled(feed)}
+                title={feed.enabled ? "Disable polling" : "Enable polling"}
+              >
+                {#if feed.enabled}
+                  <Power class="h-3.5 w-3.5 text-green-500" />
+                  Enabled
+                {:else}
+                  <PowerOff class="h-3.5 w-3.5" />
+                  Disabled
+                {/if}
+              </button>
               <button
                 class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs hover:bg-muted"
                 onclick={() => pollNow(feed)}
