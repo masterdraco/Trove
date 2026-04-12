@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 import time
 from dataclasses import dataclass, field
@@ -12,7 +13,7 @@ from sqlmodel import Session, select
 from trove.clients.base import Protocol, Release
 from trove.indexers.base import Category, IndexerError, SearchQuery
 from trove.models.feed import FeedRow, RssItemRow
-from trove.models.indexer import IndexerRow
+from trove.models.indexer import IndexerEventRow, IndexerRow
 from trove.services import indexer_registry
 
 log = structlog.get_logger()
@@ -224,11 +225,14 @@ async def run_search(
     if protocol is not None:
         rows = [r for r in rows if r.protocol == protocol.value]
 
-    async def _run_one(row: IndexerRow) -> tuple[str, list[Release] | Exception]:
+    async def _run_one(
+        row: IndexerRow,
+    ) -> tuple[str, int | None, int, list[Release] | Exception]:
+        per_start = time.monotonic()
         try:
             driver = indexer_registry.build_driver(row)
         except IndexerError as e:
-            return row.name, e
+            return row.name, row.id, int((time.monotonic() - per_start) * 1000), e
         try:
             async with asyncio.timeout(timeout_per_indexer):
                 releases = await driver.search(
@@ -242,26 +246,62 @@ async def run_search(
                         episode=episode,
                     )
                 )
-            return row.name, releases
+            return (
+                row.name,
+                row.id,
+                int((time.monotonic() - per_start) * 1000),
+                releases,
+            )
         except (IndexerError, TimeoutError, asyncio.TimeoutError) as e:  # noqa: UP041
-            return row.name, e
+            return row.name, row.id, int((time.monotonic() - per_start) * 1000), e
         except Exception as e:  # pragma: no cover - defensive
             log.warning("indexer.search.unexpected", name=row.name, error=str(e))
-            return row.name, e
+            return row.name, row.id, int((time.monotonic() - per_start) * 1000), e
         finally:
-            await driver.close()
+            with contextlib.suppress(Exception):
+                await driver.close()
 
     results = await asyncio.gather(*(_run_one(row) for row in rows))
 
     hits: list[SearchHit] = []
     errors: list[SearchError] = []
-    for name, outcome in results:
+    # Record one IndexerEventRow per per-indexer call. Failures here are
+    # intentionally swallowed — the health dashboard is observability,
+    # not a blocking dependency for search. We commit at the end of the
+    # loop so one failing insert doesn't poison the session.
+    for name, indexer_id, elapsed_per, outcome in results:
         if isinstance(outcome, Exception):
             errors.append(SearchError(name=name, message=str(outcome)))
+            if indexer_id is not None:
+                session.add(
+                    IndexerEventRow(
+                        indexer_id=indexer_id,
+                        success=False,
+                        hit_count=0,
+                        elapsed_ms=elapsed_per,
+                        query=query[:256] if query else None,
+                        error_message=str(outcome)[:512],
+                    )
+                )
             continue
         for release in outcome:
             hit = _hit_from_release(release)
             hits.append(hit)
+        if indexer_id is not None:
+            session.add(
+                IndexerEventRow(
+                    indexer_id=indexer_id,
+                    success=True,
+                    hit_count=len(outcome),
+                    elapsed_ms=elapsed_per,
+                    query=query[:256] if query else None,
+                )
+            )
+    try:
+        session.commit()
+    except Exception as e:  # pragma: no cover - observability failure, log only
+        log.warning("indexer_event.commit.failed", error=str(e))
+        session.rollback()
 
     # Mix in locally-cached RSS items. This works even when no indexers are
     # configured, turning Trove into its own search surface.

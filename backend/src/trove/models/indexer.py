@@ -25,3 +25,23 @@ class IndexerRow(SQLModel, table=True):
     last_test_at: datetime | None = Field(default=None)
     last_test_ok: bool | None = Field(default=None)
     last_test_message: str | None = Field(default=None, max_length=512)
+
+
+class IndexerEventRow(SQLModel, table=True):
+    """One per search attempt against an indexer.
+
+    Written by run_search immediately after each per-indexer call finishes,
+    regardless of whether the call succeeded or errored. Used by the
+    /api/indexers/health endpoint to render per-indexer operational stats.
+    """
+
+    __tablename__ = "indexer_event"
+
+    id: int | None = Field(default=None, primary_key=True)
+    indexer_id: int = Field(index=True, foreign_key="indexer.id")
+    at: datetime = Field(default_factory=_utcnow, index=True)
+    success: bool = Field(default=False)
+    hit_count: int = Field(default=0)
+    elapsed_ms: int = Field(default=0)
+    query: str | None = Field(default=None, max_length=256)
+    error_message: str | None = Field(default=None, max_length=512)

@@ -1,6 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type IndexerOut, type IndexerType, type Protocol } from "$lib/api";
+  import {
+    api,
+    type IndexerOut,
+    type IndexerType,
+    type Protocol,
+    type IndexerHealthOut
+  } from "$lib/api";
   import {
     Plus,
     Trash2,
@@ -9,16 +15,58 @@
     CheckCircle2,
     XCircle,
     Database,
-    Pencil
+    Pencil,
+    Activity
   } from "lucide-svelte";
 
   let items = $state<IndexerOut[]>([]);
+  let healthById = $state<Record<number, IndexerHealthOut>>({});
   let loading = $state(true);
   let showForm = $state(false);
   let saving = $state(false);
   let formError = $state<string | null>(null);
   let testingId = $state<number | null>(null);
   let editingId = $state<number | null>(null);
+
+  function formatRelative(iso: string | null): string {
+    if (!iso) return "never";
+    const then = new Date(iso).getTime();
+    const diff = Date.now() - then;
+    if (diff < 0) return "just now";
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  }
+
+  function sparklineSvg(sparkline: number[][]): string {
+    // Each entry is [count, failures, avg_ms]. Render two stacked bars per hour:
+    // total event count (blue), failures (red overlay). 24 bars, width 96px.
+    if (!sparkline || sparkline.length === 0) return "";
+    const w = 96;
+    const h = 22;
+    const barW = w / sparkline.length;
+    const maxCount = Math.max(1, ...sparkline.map((b) => b[0] || 0));
+    let out = `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" class="h-5 w-24">`;
+    sparkline.forEach((b, i) => {
+      const count = b[0] || 0;
+      const fails = b[1] || 0;
+      const cH = count > 0 ? Math.max(1, (count / maxCount) * h) : 0;
+      const fH = fails > 0 ? Math.max(1, (fails / maxCount) * h) : 0;
+      const x = i * barW;
+      if (cH > 0) {
+        out += `<rect x="${x.toFixed(1)}" y="${(h - cH).toFixed(1)}" width="${(barW - 0.5).toFixed(1)}" height="${cH.toFixed(1)}" fill="hsl(200 80% 55% / 0.75)" />`;
+      }
+      if (fH > 0) {
+        out += `<rect x="${x.toFixed(1)}" y="${(h - fH).toFixed(1)}" width="${(barW - 0.5).toFixed(1)}" height="${fH.toFixed(1)}" fill="hsl(0 85% 60%)" />`;
+      }
+    });
+    out += "</svg>";
+    return out;
+  }
 
   type Form = {
     name: string;
@@ -54,6 +102,19 @@
     loading = true;
     items = await api.indexers.list();
     loading = false;
+    // Fetch health in the background — not blocking the initial render.
+    loadHealth();
+  }
+
+  async function loadHealth() {
+    try {
+      const rows = await api.indexers.health();
+      const next: Record<number, IndexerHealthOut> = {};
+      for (const r of rows) next[r.id] = r;
+      healthById = next;
+    } catch {
+      // Non-fatal — health is observability, not core functionality.
+    }
   }
 
   onMount(load);
@@ -191,11 +252,13 @@
             <th class="px-4 py-3 font-medium">Type</th>
             <th class="px-4 py-3 font-medium">URL</th>
             <th class="px-4 py-3 font-medium">Last test</th>
+            <th class="px-4 py-3 font-medium">Activity (24h)</th>
             <th class="px-4 py-3 font-medium"></th>
           </tr>
         </thead>
         <tbody>
           {#each items as item (item.id)}
+            {@const h = healthById[item.id]}
             <tr class="border-t border-border">
               <td class="px-4 py-3 font-medium">{item.name}</td>
               <td class="px-4 py-3">
@@ -219,6 +282,37 @@
                   <div class="text-xs text-muted-foreground">{formatTime(item.last_test_at)}</div>
                 {:else}
                   <span class="text-xs text-muted-foreground">never</span>
+                {/if}
+              </td>
+              <td class="px-4 py-3">
+                {#if h && h.events_24h > 0}
+                  <div class="flex items-center gap-2">
+                    {@html sparklineSvg(h.sparkline)}
+                    <div class="text-xs leading-tight">
+                      <div>
+                        <span class="font-semibold">{h.successes_24h}</span>
+                        <span class="text-muted-foreground">/ {h.events_24h} ok</span>
+                      </div>
+                      <div class="text-muted-foreground">
+                        {h.avg_elapsed_ms_24h ?? 0} ms avg · {h.total_hits_24h} hits
+                      </div>
+                    </div>
+                  </div>
+                  {#if h.failures_24h > 0 && h.last_error_message}
+                    <div
+                      class="mt-1 truncate text-xs text-destructive"
+                      title={h.last_error_message}
+                    >
+                      ⚠ {h.last_error_message}
+                    </div>
+                  {/if}
+                {:else if h}
+                  <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Activity class="h-3.5 w-3.5" />
+                    <span>no searches in the last 24h</span>
+                  </div>
+                {:else}
+                  <span class="text-xs text-muted-foreground">…</span>
                 {/if}
               </td>
               <td class="px-4 py-3 text-right">

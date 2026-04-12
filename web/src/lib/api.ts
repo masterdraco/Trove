@@ -87,6 +87,28 @@ export type IndexerTestResult = {
   supported_categories: Category[];
 };
 
+export type IndexerHealthOut = {
+  id: number;
+  name: string;
+  type: IndexerType;
+  protocol: Protocol;
+  enabled: boolean;
+  last_test_at: string | null;
+  last_test_ok: boolean | null;
+  last_test_message: string | null;
+  events_24h: number;
+  successes_24h: number;
+  failures_24h: number;
+  success_rate_24h: number;
+  avg_elapsed_ms_24h: number | null;
+  total_hits_24h: number;
+  last_event_at: string | null;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_error_message: string | null;
+  sparkline: number[][];
+};
+
 export type SearchHit = {
   title: string;
   protocol: Protocol;
@@ -277,6 +299,7 @@ export const api = {
 
   indexers: {
     list: () => request<IndexerOut[]>("/api/indexers"),
+    health: () => request<IndexerHealthOut[]>("/api/indexers/health"),
     create: (payload: IndexerCreate) =>
       request<IndexerOut>("/api/indexers", {
         method: "POST",
