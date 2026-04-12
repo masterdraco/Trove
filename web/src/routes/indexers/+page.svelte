@@ -77,6 +77,9 @@
     definition_yaml: string;
     session_cookie: string;
     passkey: string;
+    rt_pass: string;
+    rt_phpsessid: string;
+    rt_vid: string;
   };
 
   const empty = (): Form => ({
@@ -87,7 +90,10 @@
     api_key: "",
     definition_yaml: "",
     session_cookie: "",
-    passkey: ""
+    passkey: "",
+    rt_pass: "",
+    rt_phpsessid: "",
+    rt_vid: ""
   });
 
   function normalizeUrl(raw: string): string {
@@ -135,7 +141,10 @@
       api_key: "",
       definition_yaml: "",
       session_cookie: "",
-      passkey: ""
+      passkey: "",
+      rt_pass: "",
+      rt_phpsessid: "",
+      rt_vid: ""
     };
     editingId = item.id;
     formError = null;
@@ -152,7 +161,17 @@
         if (form.type === "cardigann") return {};
         if (form.type === "rartracker") {
           const c: Record<string, unknown> = {};
-          if (form.session_cookie) c.session_cookie = form.session_cookie;
+          // Build session_cookie from individual fields if provided
+          const parts: string[] = [];
+          if (form.rt_pass) parts.push(`pass=${form.rt_pass}`);
+          if (form.rt_phpsessid) parts.push(`PHPSESSID=${form.rt_phpsessid}`);
+          if (form.rt_vid) parts.push(`vid=${form.rt_vid}`);
+          if (parts.length > 0) {
+            c.session_cookie = parts.join("; ");
+          } else if (form.session_cookie) {
+            // Fallback to raw cookie field
+            c.session_cookie = form.session_cookie;
+          }
           if (form.passkey) c.passkey = form.passkey;
           return c;
         }
@@ -429,34 +448,51 @@
         </label>
 
         {#if form.type === "rartracker"}
-          <label class="block">
-            <span class="mb-1 block text-sm font-medium">Session cookie</span>
-            <textarea
-              bind:value={form.session_cookie}
-              rows="3"
-              required={editingId === null}
-              placeholder={editingId !== null
-                ? "•••••• (leave blank to keep existing)"
-                : "pass=abc123def456; PHPSESSID=xyz789; vid=a1b2c3d4"}
-              class="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none ring-ring focus:ring-2"
-            ></textarea>
-            <div class="mt-1.5 space-y-1 text-xs text-muted-foreground">
-              <p>Paste the full cookie string from your browser. It typically contains three parts:</p>
-              <code class="block rounded bg-muted/50 px-2 py-1 font-mono text-[11px]">pass=4acb...4e21; PHPSESSID=r2t8...3kp9; vid=a8f2...9c01</code>
-              <p><strong>How to get it:</strong> Log in to the tracker → F12 (DevTools) → Network tab → click any request to the tracker → copy the <code>Cookie</code> header value.</p>
-              <p>Session cookies expire periodically — update here when searches start failing.</p>
+          <div class="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+            <div>
+              <span class="text-sm font-semibold">Session cookies</span>
+              <p class="mt-0.5 text-xs text-muted-foreground">
+                Log in to the tracker → F12 (DevTools) → Application → Cookies → copy each value. They expire periodically.
+              </p>
             </div>
-          </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium font-mono">pass</span>
+              <input
+                type="password"
+                bind:value={form.rt_pass}
+                placeholder={editingId !== null ? "•••••• (leave blank to keep)" : "4acbd436d2dc8720e46dec85088f4e21"}
+                class="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none ring-ring focus:ring-2"
+              />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium font-mono">PHPSESSID</span>
+              <input
+                type="password"
+                bind:value={form.rt_phpsessid}
+                placeholder={editingId !== null ? "•••••• (leave blank to keep)" : "r2t8abc123def456xyz789kp9"}
+                class="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none ring-ring focus:ring-2"
+              />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium font-mono">vid</span>
+              <input
+                type="password"
+                bind:value={form.rt_vid}
+                placeholder={editingId !== null ? "•••••• (leave blank to keep)" : "c9d597bf1a2b3c4d5e6f7890abcddede"}
+                class="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none ring-ring focus:ring-2"
+              />
+            </label>
+          </div>
           <label class="block">
             <span class="mb-1 block text-sm font-medium">Passkey <span class="font-normal text-muted-foreground">(optional)</span></span>
             <input
               type="password"
               bind:value={form.passkey}
-              placeholder={editingId !== null ? "•••••• (leave blank to keep)" : "025c82f6...e83cedd5"}
+              placeholder={editingId !== null ? "•••••• (leave blank to keep)" : "025c82f6228f779a23a5cd24e83cedd5"}
               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-ring focus:ring-2"
             />
-            <div class="mt-1.5 text-xs text-muted-foreground">
-              Found on your tracker profile page. Not required — Trove uses session cookies for both search and downloads.
+            <div class="mt-1 text-xs text-muted-foreground">
+              From your profile page. Optional — Trove uses session cookies for downloads.
             </div>
           </label>
         {:else if form.type !== "cardigann"}
