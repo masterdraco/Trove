@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 from trove.ai import client as ai_client
 from trove.clients.base import ClientType, Protocol
+from trove.indexers.base import Category
 from trove.models.client import Client
 
 log = structlog.get_logger()
@@ -147,6 +148,59 @@ def _parse_protocol(raw: Any) -> Protocol | None:
     return None
 
 
+def _enabled_indexer_protocols(session: Session) -> set[Protocol]:
+    """Return the set of protocols at least one enabled indexer handles."""
+    from trove.models.indexer import IndexerRow
+
+    rows = session.exec(
+        select(IndexerRow).where(IndexerRow.enabled == True)  # noqa: E712
+    ).all()
+    out: set[Protocol] = set()
+    for r in rows:
+        try:
+            out.add(Protocol(r.protocol))
+        except ValueError:
+            continue
+    return out
+
+
+async def _probe_indexers(
+    session: Session,
+    query: str,
+    *,
+    category: Category,
+    protocol: Protocol | None = None,
+    tmdb_id: int | None = None,
+    imdb_id: str | None = None,
+) -> tuple[int, str | None]:
+    """Fire a cheap search across enabled indexers to see if the thing
+    the user wants is actually findable. Returns (hit_count, sample_title).
+
+    Used by add_series / add_movie at propose time so the AI can tell
+    the user "I found 18 hits matching 'Scream 7'" or "0 hits — the
+    movie may not be out yet" *before* the task is even created.
+    """
+    from trove.services import search_service
+
+    try:
+        response = await search_service.run_search(
+            session,
+            query,
+            categories=[category],
+            protocol=protocol,
+            limit=5,
+            timeout_per_indexer=10.0,
+            tmdb_id=str(tmdb_id) if tmdb_id else None,
+            imdb_id=str(imdb_id) if imdb_id else None,
+        )
+    except Exception:
+        # Probe failures are non-fatal — the task can still be created.
+        return 0, None
+    count = len(response.hits)
+    sample = response.hits[0].title if response.hits else None
+    return count, sample
+
+
 def _pick_default_clients(
     session: Session,
     preferred_protocol: Protocol | None = None,
@@ -199,6 +253,7 @@ def _build_series_task_yaml(
     *,
     tmdb_id: int | None = None,
     imdb_id: str | None = None,
+    protocol: Protocol | None = None,
 ) -> str:
     reject = ["cam", "telesync", "hdcam", "workprint"]
     filters: dict[str, Any] = {
@@ -228,6 +283,8 @@ def _build_series_task_yaml(
         input_spec["tmdb_id"] = int(tmdb_id)
     if imdb_id:
         input_spec["imdb_id"] = str(imdb_id)
+    if protocol is not None:
+        input_spec["protocol"] = protocol.value
     config: dict[str, Any] = {
         "inputs": [input_spec],
         "filters": filters,
@@ -244,6 +301,7 @@ def _build_movie_task_yaml(
     *,
     tmdb_id: int | None = None,
     imdb_id: str | None = None,
+    protocol: Protocol | None = None,
 ) -> str:
     query = f"{title} {year}" if year else title
     filters: dict[str, Any] = {
@@ -262,6 +320,8 @@ def _build_movie_task_yaml(
         input_spec["tmdb_id"] = int(tmdb_id)
     if imdb_id:
         input_spec["imdb_id"] = str(imdb_id)
+    if protocol is not None:
+        input_spec["protocol"] = protocol.value
     config: dict[str, Any] = {
         "inputs": [input_spec],
         "filters": filters,
@@ -619,7 +679,22 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                 ),
             )
 
-        # Filter clients list if user explicitly asked for a single protocol
+        indexer_protocols = _enabled_indexer_protocols(session)
+        if not indexer_protocols:
+            return ProposedAction(
+                intent="chat",
+                params={},
+                description="",
+                requires_confirmation=False,
+                message=(
+                    f"I can set up auto-download for '{title}', but you haven't added any "
+                    "indexers yet. A task with no indexers can't search anywhere. "
+                    "Add a Newznab/Torznab/UNIT3D indexer on the Indexers page first."
+                ),
+            )
+
+        # Refuse up front if the user's protocol hint can't be served —
+        # neither the client side nor the indexer side has a match.
         if preferred_proto is Protocol.TORRENT and not any(
             ClientType(c.type).protocol is Protocol.TORRENT for c in clients
         ):
@@ -627,6 +702,7 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                 "You asked for torrent only but no torrent client is configured — "
                 "using usenet instead."
             )
+            preferred_proto = None
         elif preferred_proto is Protocol.USENET and not any(
             ClientType(c.type).protocol is Protocol.USENET for c in clients
         ):
@@ -634,10 +710,39 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                 "You asked for usenet only but no usenet client is configured — "
                 "using torrent instead."
             )
+            preferred_proto = None
         elif preferred_proto is not None:
             clients = [
                 c for c in clients if ClientType(c.type).protocol is preferred_proto
             ] or clients
+
+        # Indexer protocol sanity check — the user might have the right
+        # *client* but no indexer that speaks the same protocol, in which
+        # case the task would never find anything useful.
+        if preferred_proto is Protocol.TORRENT and Protocol.TORRENT not in indexer_protocols:
+            return ProposedAction(
+                intent="chat",
+                params={},
+                description="",
+                requires_confirmation=False,
+                message=(
+                    f"You asked for '{title}' via torrent, but all your enabled indexers are "
+                    "usenet (NZB). A torrent task needs a torrent-capable indexer — add one "
+                    "on the Indexers page (UNIT3D, Torznab, or Cardigann) and try again."
+                ),
+            )
+        if preferred_proto is Protocol.USENET and Protocol.USENET not in indexer_protocols:
+            return ProposedAction(
+                intent="chat",
+                params={},
+                description="",
+                requires_confirmation=False,
+                message=(
+                    f"You asked for '{title}' via usenet, but all your enabled indexers are "
+                    "torrent. A usenet task needs a Newznab-speaking indexer — add one on "
+                    "the Indexers page and try again."
+                ),
+            )
 
         output_names = [c.name for c in clients]
         active_protocols = sorted({ClientType(c.type).protocol.value for c in clients})
@@ -646,7 +751,9 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
 
         if intent == "add_series":
             task_name = _slugify(title)
-            config_yaml = _build_series_task_yaml(title, quality, output_names)
+            config_yaml = _build_series_task_yaml(
+                title, quality, output_names, protocol=preferred_proto
+            )
             schedule = "0 * * * *"  # hourly
             desc_quality = f" in **{quality}**" if quality and quality != "any" else ""
             description = (
@@ -654,9 +761,13 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                 f"episodes{desc_quality} across all your indexers and sends matches to "
                 f"{client_names}{protocol_label}. Already-seen releases are skipped."
             )
+            probe_category = Category.TV
+            probe_query = title
         else:
             task_name = _slugify(f"{title}-{year}" if year else title)
-            config_yaml = _build_movie_task_yaml(title, year, quality, output_names)
+            config_yaml = _build_movie_task_yaml(
+                title, year, quality, output_names, protocol=preferred_proto
+            )
             schedule = "0 */2 * * *"  # every 2 hours
             desc_quality = f" in **{quality}**" if quality and quality != "any" else ""
             year_text = f" ({year})" if year else ""
@@ -665,6 +776,32 @@ async def propose(session: Session, user_prompt: str) -> ProposedAction:
                 f"**{title}**{year_text}{desc_quality} across all your indexers and sends "
                 f"the best match to {client_names}{protocol_label}. The task stops after "
                 f"the movie is downloaded."
+            )
+            probe_category = Category.MOVIES
+            probe_query = f"{title} {year}" if year else title
+
+        # Probe the indexers now so the user sees "I found N hits" before
+        # committing. Cheap — limit=5, 10s timeout per indexer.
+        probe_count, probe_sample = await _probe_indexers(
+            session,
+            probe_query,
+            category=probe_category,
+            protocol=preferred_proto,
+        )
+        if probe_count > 0:
+            sample_note = (
+                f" Best guess from a quick probe: *{probe_sample}*." if probe_sample else ""
+            )
+            description += (
+                f"\n\n**Quick probe**: found **{probe_count} hit{'s' if probe_count != 1 else ''}** "
+                f"matching your query across your enabled indexers.{sample_note}"
+            )
+        else:
+            description += (
+                "\n\n**Quick probe**: **0 hits** right now — none of your enabled indexers "
+                "returned anything matching this query. The release may not be out yet, or "
+                "your indexers may not carry it. You can still create the task; it'll start "
+                "grabbing the moment something lands."
             )
 
         return ProposedAction(

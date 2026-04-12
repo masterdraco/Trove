@@ -388,6 +388,13 @@ async def run_task(
                 tmdb_id = str(tmdb_id_raw) if tmdb_id_raw not in (None, "") else None
                 imdb_id_raw = input_spec.get("imdb_id")
                 imdb_id = str(imdb_id_raw) if imdb_id_raw not in (None, "") else None
+                proto_raw = input_spec.get("protocol")
+                search_protocol: Protocol | None = None
+                if isinstance(proto_raw, str):
+                    try:
+                        search_protocol = Protocol(proto_raw)
+                    except ValueError:
+                        search_protocol = None
                 # Per-season backfill: a single tvsearch caps at ~100 hits,
                 # which usually only covers the most recent season + a few
                 # stragglers. When the user has explicitly enabled backfill
@@ -435,6 +442,8 @@ async def run_task(
                     extras += f" tmdb={tmdb_id}"
                 if imdb_id:
                     extras += f" imdb={imdb_id}"
+                if search_protocol is not None:
+                    extras += f" protocol={search_protocol.value}"
                 if seasons_to_query != [None]:
                     extras += f" backfill={seasons_to_query[0]}..{seasons_to_query[-1]}"
                 logger.write(f"search: {query} (cats={category_values}{extras})\n")
@@ -450,6 +459,7 @@ async def run_task(
                         tmdb_id=tmdb_id,
                         imdb_id=imdb_id,
                         season=season,
+                        protocol=search_protocol,
                     )
                     new = [
                         h
