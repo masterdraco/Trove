@@ -6,6 +6,7 @@ from trove.clients.base import Protocol
 from trove.indexers.base import Category, Indexer, IndexerError, IndexerType
 from trove.indexers.cardigann import CardigannIndexer, load_definition_yaml
 from trove.indexers.newznab import NewznabIndexer
+from trove.indexers.rartracker import RartrackerIndexer
 from trove.indexers.unit3d import Unit3dIndexer
 from trove.models.indexer import IndexerRow
 from trove.utils.crypto import decrypt_json, encrypt_json
@@ -39,6 +40,19 @@ def _build(
         definition = load_definition_yaml(definition_yaml)
         definition.name = name
         return CardigannIndexer(definition, base_url=base_url)
+    if indexer_type is IndexerType.RARTRACKER:
+        session_cookie = creds.get("session_cookie")
+        if not session_cookie:
+            raise IndexerError(
+                f"{name}: session_cookie required — paste it from your browser "
+                f"devtools after logging in to the tracker"
+            )
+        return RartrackerIndexer(
+            name=name,
+            base_url=base_url,
+            session_cookie=session_cookie,
+            passkey=creds.get("passkey"),
+        )
     if indexer_type is IndexerType.UNIT3D:
         api_key = creds.get("api_key")
         if not api_key:

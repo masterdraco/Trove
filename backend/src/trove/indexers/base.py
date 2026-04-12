@@ -26,6 +26,7 @@ class IndexerType(StrEnum):
     TORZNAB = "torznab"
     CARDIGANN = "cardigann"
     UNIT3D = "unit3d"
+    RARTRACKER = "rartracker"
     CUSTOM = "custom"
 
 

@@ -27,6 +27,8 @@
     base_url: string;
     api_key: string;
     definition_yaml: string;
+    session_cookie: string;
+    passkey: string;
   };
 
   const empty = (): Form => ({
@@ -35,7 +37,9 @@
     protocol: "usenet",
     base_url: "",
     api_key: "",
-    definition_yaml: ""
+    definition_yaml: "",
+    session_cookie: "",
+    passkey: ""
   });
 
   function normalizeUrl(raw: string): string {
@@ -68,7 +72,9 @@
       protocol: item.protocol,
       base_url: item.base_url,
       api_key: "",
-      definition_yaml: ""
+      definition_yaml: "",
+      session_cookie: "",
+      passkey: ""
     };
     editingId = item.id;
     formError = null;
@@ -81,14 +87,24 @@
     formError = null;
     const cleanUrl = normalizeUrl(form.base_url);
     try {
+      const buildCreds = (): Record<string, unknown> => {
+        if (form.type === "cardigann") return {};
+        if (form.type === "rartracker") {
+          const c: Record<string, unknown> = {};
+          if (form.session_cookie) c.session_cookie = form.session_cookie;
+          if (form.passkey) c.passkey = form.passkey;
+          return c;
+        }
+        return form.api_key ? { api_key: form.api_key } : {};
+      };
+
       if (editingId !== null) {
         const payload: Record<string, unknown> = {
           name: form.name,
           base_url: cleanUrl
         };
-        if (form.api_key) {
-          payload.credentials = { api_key: form.api_key };
-        }
+        const creds = buildCreds();
+        if (Object.keys(creds).length > 0) payload.credentials = creds;
         if (form.type === "cardigann" && form.definition_yaml) {
           payload.definition_yaml = form.definition_yaml;
         }
@@ -99,7 +115,7 @@
           type: form.type,
           protocol: form.protocol,
           base_url: cleanUrl,
-          credentials: form.type === "cardigann" ? {} : { api_key: form.api_key },
+          credentials: buildCreds(),
           definition_yaml: form.type === "cardigann" ? form.definition_yaml : null
         });
       }
@@ -291,6 +307,7 @@
               <option value="torznab">Torznab (Torrents)</option>
               <option value="cardigann">Cardigann (YAML)</option>
               <option value="unit3d">UNIT3D (Aither, Blutopia, Nordicbytes, …)</option>
+              <option value="rartracker">RarTracker (Superbits, ScenePalace, …)</option>
             </select>
           </label>
           <label class="block">
@@ -317,7 +334,38 @@
           />
         </label>
 
-        {#if form.type !== "cardigann"}
+        {#if form.type === "rartracker"}
+          <label class="block">
+            <span class="mb-1 block text-sm font-medium">Session cookie</span>
+            <textarea
+              bind:value={form.session_cookie}
+              rows="3"
+              required={editingId === null}
+              placeholder={editingId !== null
+                ? "•••••• (leave blank to keep existing)"
+                : "PHPSESSID=abc123; rartracker=def456"}
+              class="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none ring-ring focus:ring-2"
+            ></textarea>
+            <span class="mt-1 block text-xs text-muted-foreground">
+              Log in to the tracker in your browser, open DevTools → Application → Cookies,
+              and copy the full cookie header for the tracker domain. Session cookies expire —
+              you'll need to re-paste when searches start failing with "session expired".
+            </span>
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-sm font-medium">Passkey</span>
+            <input
+              type="password"
+              bind:value={form.passkey}
+              placeholder={editingId !== null ? "•••••• (leave blank to keep)" : ""}
+              class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-ring focus:ring-2"
+            />
+            <span class="mt-1 block text-xs text-muted-foreground">
+              From your tracker profile page — used to build download URLs. Optional for
+              testing the search; required for actually grabbing torrents.
+            </span>
+          </label>
+        {:else if form.type !== "cardigann"}
           <label class="block">
             <span class="mb-1 block text-sm font-medium">API key</span>
             <input
