@@ -51,6 +51,7 @@
     { href: "/watchlist", label: "Watchlist", icon: Eye, color: "text-pink-400" },
     { href: "/calendar", label: "Calendar", icon: Calendar, color: "text-indigo-400" },
     { href: "/ai", label: "AI", icon: Sparkles, color: "text-fuchsia-400" },
+    { href: "/downloads", label: "Downloads", icon: Download, color: "text-green-400" },
     { href: "/history", label: "History", icon: History, color: "text-amber-400" },
     { href: "/logs", label: "Logs", icon: ScrollText, color: "text-slate-400" },
     { href: "/docs", label: "Docs", icon: BookOpen, color: "text-teal-400" },

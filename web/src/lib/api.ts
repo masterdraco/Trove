@@ -280,6 +280,26 @@ export type TaskRunOut = {
   log: string;
 };
 
+export type DownloadOut = {
+  id: number;
+  task_id: number;
+  task_name: string;
+  title: string;
+  outcome: string;
+  seen_at: string;
+  client_id: number | null;
+  client_name: string | null;
+  download_status: string | null;
+  download_progress: number | null;
+  download_size_bytes: number | null;
+  download_downloaded_bytes: number | null;
+  download_eta_seconds: number | null;
+  download_error_message: string | null;
+  download_state_at: string | null;
+  quality_score: number | null;
+  quality_tier: number | null;
+};
+
 export type SeenReleaseOut = {
   id: number;
   task_id: number;
@@ -508,12 +528,12 @@ export const api = {
   discover: {
     status: () =>
       request<{ configured: boolean }>("/api/discover/status"),
-    trending: (media: "all" | "movie" | "tv" = "all", window: "day" | "week" = "week") =>
-      request<DiscoverItem[]>(`/api/discover/trending?media=${media}&window=${window}`),
-    popular: (media: "movie" | "tv" = "movie") =>
-      request<DiscoverItem[]>(`/api/discover/popular?media=${media}`),
-    upcomingMovies: () => request<DiscoverItem[]>("/api/discover/upcoming/movies"),
-    onAirTv: () => request<DiscoverItem[]>("/api/discover/on-air/tv"),
+    trending: (media: "all" | "movie" | "tv" = "all", window: "day" | "week" = "week", limit = 20) =>
+      request<DiscoverItem[]>(`/api/discover/trending?media=${media}&window=${window}&limit=${limit}`),
+    popular: (media: "movie" | "tv" = "movie", limit = 20) =>
+      request<DiscoverItem[]>(`/api/discover/popular?media=${media}&limit=${limit}`),
+    upcomingMovies: (limit = 20) => request<DiscoverItem[]>(`/api/discover/upcoming/movies?limit=${limit}`),
+    onAirTv: (limit = 20) => request<DiscoverItem[]>(`/api/discover/on-air/tv?limit=${limit}`),
     search: (q: string, kind: "multi" | "movie" | "tv" = "multi") =>
       request<DiscoverItem[]>(
         `/api/discover/search?q=${encodeURIComponent(q)}&kind=${kind}`
@@ -762,6 +782,16 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ intent, params })
       })
+  },
+
+  downloads: {
+    list: (status?: string, limit = 50) => {
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (limit !== 50) params.set("limit", String(limit));
+      const qs = params.toString();
+      return request<DownloadOut[]>(`/api/downloads${qs ? `?${qs}` : ""}`);
+    }
   },
 
   tasks: {

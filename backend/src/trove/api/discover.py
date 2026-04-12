@@ -71,10 +71,11 @@ async def status_endpoint(_user: User = Depends(current_user)) -> ConfigStatus:
 async def trending_endpoint(
     media: str = Query("all", pattern="^(all|movie|tv)$"),
     window: str = Query("week", pattern="^(day|week)$"),
+    limit: int = Query(20, ge=1, le=100),
     _user: User = Depends(current_user),
 ) -> list[DiscoverItem]:
     try:
-        items = await tmdb.trending(media=media, window=window)
+        items = await tmdb.trending(media=media, window=window, limit=limit)
     except tmdb.TmdbError as e:
         raise _wrap(e) from e
     return [_to_out(i) for i in items]
@@ -83,10 +84,11 @@ async def trending_endpoint(
 @router.get("/popular", response_model=list[DiscoverItem])
 async def popular_endpoint(
     media: str = Query("movie", pattern="^(movie|tv)$"),
+    limit: int = Query(20, ge=1, le=100),
     _user: User = Depends(current_user),
 ) -> list[DiscoverItem]:
     try:
-        items = await tmdb.popular(media=media)
+        items = await tmdb.popular(media=media, limit=limit)
     except tmdb.TmdbError as e:
         raise _wrap(e) from e
     return [_to_out(i) for i in items]
@@ -94,10 +96,11 @@ async def popular_endpoint(
 
 @router.get("/upcoming/movies", response_model=list[DiscoverItem])
 async def upcoming_movies_endpoint(
+    limit: int = Query(20, ge=1, le=100),
     _user: User = Depends(current_user),
 ) -> list[DiscoverItem]:
     try:
-        items = await tmdb.upcoming_movies()
+        items = await tmdb.upcoming_movies(limit=limit)
     except tmdb.TmdbError as e:
         raise _wrap(e) from e
     return [_to_out(i) for i in items]
@@ -105,10 +108,11 @@ async def upcoming_movies_endpoint(
 
 @router.get("/on-air/tv", response_model=list[DiscoverItem])
 async def on_air_tv_endpoint(
+    limit: int = Query(20, ge=1, le=100),
     _user: User = Depends(current_user),
 ) -> list[DiscoverItem]:
     try:
-        items = await tmdb.on_the_air_tv()
+        items = await tmdb.on_the_air_tv(limit=limit)
     except tmdb.TmdbError as e:
         raise _wrap(e) from e
     return [_to_out(i) for i in items]

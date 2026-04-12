@@ -31,6 +31,9 @@
 
   let addedIds = $state<Set<number>>(new Set());
   let addingId = $state<number | null>(null);
+  let perPage = $state(20);
+
+  const perPageOptions = [10, 20, 50, 100];
 
   const tabs: { key: Tab; label: string; icon: typeof TrendingUp }[] = [
     { key: "trending", label: "Trending", icon: TrendingUp },
@@ -45,11 +48,11 @@
     loading = true;
     error = null;
     try {
-      if (tab === "trending") items = await api.discover.trending("all", "week");
-      else if (tab === "movies") items = await api.discover.popular("movie");
-      else if (tab === "tv") items = await api.discover.popular("tv");
-      else if (tab === "upcoming") items = await api.discover.upcomingMovies();
-      else if (tab === "onair") items = await api.discover.onAirTv();
+      if (tab === "trending") items = await api.discover.trending("all", "week", perPage);
+      else if (tab === "movies") items = await api.discover.popular("movie", perPage);
+      else if (tab === "tv") items = await api.discover.popular("tv", perPage);
+      else if (tab === "upcoming") items = await api.discover.upcomingMovies(perPage);
+      else if (tab === "onair") items = await api.discover.onAirTv(perPage);
     } catch (e) {
       const err = e as { status?: number; detail?: string };
       if (err.detail === "tmdb_not_configured") configured = false;
@@ -196,8 +199,8 @@
       </div>
     </form>
 
-    <!-- Tabs -->
-    <div class="flex flex-wrap gap-2">
+    <!-- Tabs + per-page -->
+    <div class="flex flex-wrap items-center gap-2">
       {#each tabs as tab}
         {@const Icon = tab.icon}
         {@const active = activeTab === tab.key}
@@ -211,6 +214,19 @@
           {tab.label}
         </button>
       {/each}
+      <div class="ml-auto flex items-center gap-1.5">
+        <span class="text-xs text-muted-foreground">Show</span>
+        {#each perPageOptions as n}
+          <button
+            class="rounded-md px-2 py-1 text-xs font-medium transition-colors {perPage === n
+              ? 'bg-primary text-primary-foreground'
+              : 'border border-border bg-card/50 text-muted-foreground hover:bg-muted'}"
+            onclick={() => { perPage = n; loadTab(activeTab); }}
+          >
+            {n}
+          </button>
+        {/each}
+      </div>
     </div>
 
     {#if error && !loading}

@@ -166,34 +166,61 @@ def _coerce_result(data: dict[str, Any], hint: str | None = None) -> TmdbItem | 
     return None
 
 
-async def trending(media: str = "all", window: str = "week") -> list[TmdbItem]:
+async def _multi_page(
+    path: str,
+    pages: int,
+    coerce: Any,
+    params: dict[str, Any] | None = None,
+) -> list[TmdbItem]:
+    """Fetch up to *pages* pages from a TMDB list endpoint."""
+    results: list[TmdbItem] = []
+    for page in range(1, pages + 1):
+        merged = {**(params or {}), "page": page}
+        data = await _request(path, merged)
+        for r in data.get("results", []):
+            item = coerce(r)
+            if item is not None:
+                results.append(item)
+        if page >= int(data.get("total_pages", 1)):
+            break
+    return results
+
+
+async def trending(media: str = "all", window: str = "week", limit: int = 20) -> list[TmdbItem]:
     """media: all | movie | tv. window: day | week."""
     if media not in ("all", "movie", "tv"):
         raise TmdbError("media must be all, movie, or tv")
     if window not in ("day", "week"):
         raise TmdbError("window must be day or week")
-    data = await _request(f"/trending/{media}/{window}")
     hint = None if media == "all" else media
-    items = [_coerce_result(r, hint=hint) for r in data.get("results", [])]
-    return [i for i in items if i is not None]
+    pages = max(1, (limit + 19) // 20)
+    items = await _multi_page(
+        f"/trending/{media}/{window}",
+        pages,
+        lambda r: _coerce_result(r, hint=hint),
+    )
+    return items[:limit]
 
 
-async def popular(media: str = "movie") -> list[TmdbItem]:
+async def popular(media: str = "movie", limit: int = 20) -> list[TmdbItem]:
     if media not in ("movie", "tv"):
         raise TmdbError("popular media must be movie or tv")
-    data = await _request(f"/{media}/popular")
     coerce = _coerce_movie if media == "movie" else _coerce_tv
-    return [coerce(r) for r in data.get("results", [])]
+    pages = max(1, (limit + 19) // 20)
+    items = await _multi_page(f"/{media}/popular", pages, coerce)
+    return items[:limit]
 
 
-async def upcoming_movies() -> list[TmdbItem]:
-    data = await _request("/movie/upcoming")
-    return [_coerce_movie(r) for r in data.get("results", [])]
+async def upcoming_movies(limit: int = 20) -> list[TmdbItem]:
+    pages = max(1, (limit + 19) // 20)
+    items = await _multi_page("/movie/upcoming", pages, _coerce_movie)
+    return items[:limit]
 
 
-async def on_the_air_tv() -> list[TmdbItem]:
-    data = await _request("/tv/on_the_air")
-    return [_coerce_tv(r) for r in data.get("results", [])]
+async def on_the_air_tv(limit: int = 20) -> list[TmdbItem]:
+    pages = max(1, (limit + 19) // 20)
+    items = await _multi_page("/tv/on_the_air", pages, _coerce_tv)
+    return items[:limit]
 
 
 async def search(query: str, kind: str = "multi") -> list[TmdbItem]:
