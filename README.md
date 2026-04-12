@@ -1,53 +1,103 @@
-# Trove
+<p align="center">
+  <img src="logo-1600x400.png" alt="Trove" width="600" />
+</p>
 
-A modern replacement for FlexGet with built-in multi-tracker search, Usenet support, a polished web UI, and optional local AI assistance.
+<p align="center">
+  <strong>Self-hosted media automation hub</strong><br>
+  Search across multiple indexers, automate downloads, track quality upgrades — all from a single UI.
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> &middot;
+  <a href="#screenshots">Screenshots</a> &middot;
+  <a href="#quick-start-docker">Quick Start</a> &middot;
+  <a href="#development">Development</a> &middot;
+  <a href="#support">Support</a>
+</p>
+
+---
 
 ## Features
 
-- **Multi-tracker search** across torrent trackers (Cardigann-compatible) and Usenet indexers (Newznab/Torznab) — no Prowlarr/Jackett required.
-- **Download client integration**: Deluge, Transmission, SABnzbd, NZBGet.
-- **Task engine**: input → filter → output pipeline with cron scheduling, dry-run, and per-release trace.
-- **Modern web UI** (SvelteKit + shadcn-svelte) — everything configurable from the browser.
-- **Optional AI layer** via [litellm](https://github.com/BerriAI/litellm) — default configured for Ollama. Used for query expansion, result ranking, fuzzy title matching, and a "why didn't X download?" chat.
-- **Torznab export** so Sonarr/Radarr can use Trove as their indexer.
+### Search & Indexers
+- **Multi-indexer search** — Newznab, Torznab, UNIT3D (Nordicbytes), RarTracker (Superbits), Cardigann-compatible
+- **RSS feed polling** with caching and search-within-cache
+- **Torznab export** — use Trove as the indexer for Sonarr, Radarr, Lidarr
+- **Indexer health dashboard** — 24h sparkline, success rate, latency per indexer
 
-## Status
+### Download Clients
+- **4 clients supported**: Transmission, Deluge, SABnzbd, NZBGet
+- **Live download monitoring** — progress bars, ETA, size, status (queued/downloading/completed/failed)
+- **Server-side torrent prefetch** — handles private tracker cookie auth transparently
 
-Early development — functional but not yet stable. See the in-app docs at `/docs` after first boot for feature walkthroughs.
+### Automation
+- **Task engine** — YAML-configured input/filter/output pipelines with cron scheduling
+- **Watchlist** — add movies & TV series, auto-promote to download tasks
+- **TV backfill** — per-season iteration with smart empty-season cutoff
+- **Quality upgrade path** — auto-replace grabs with better quality until target tier is reached
+- **Quality profiles** — custom ranking weights for quality, source, codec, with reject tokens
 
-## Quick start (Docker)
+### Discovery & Calendar
+- **TMDB integration** — browse trending, popular, upcoming releases with poster grid
+- **Sonarr-style calendar** — month grid showing release dates with grabbed/pending/missed status
+- **Per-page selector** — view 10, 20, 50, or 100 results at once
+
+### Notifications
+- **5 provider types**: Discord (webhook + bot), Telegram, ntfy, generic webhook
+- **8 event types**: grabbed, upgraded, send failed, error, download started/completed/failed/removed
+
+### AI Assistant
+- **Local LLM** via Ollama + litellm — no cloud dependency
+- **Natural language task creation** — describe what you want, AI builds the task config
+- **Protocol-aware** — probes your indexers to pick the right protocol
+
+### System
+- **One-click self-update** from GitHub
+- **Backup & restore** — full database + session secret in a single ZIP
+- **Guided onboarding wizard** — step-by-step setup for first-time users
+- **Built-in documentation** with feature walkthroughs
+
+---
+
+## Quick Start (Docker)
 
 ```bash
-docker compose up -d
+git clone https://github.com/masterdraco/Trove.git
+cd Trove
+docker-compose up -d
 ```
 
-Then open http://localhost:8000 (or http://<host-ip>:8000 from any other
-device on your LAN) and complete the setup wizard.
+Open **http://localhost:8000** and complete the setup wizard.
 
-> **Permission denied talking to the Docker socket?** Your user needs to
-> be in the `docker` group. On a fresh install:
+> **Docker permission denied?** Add your user to the docker group:
 > ```bash
-> sudo usermod -aG docker $USER
-> newgrp docker   # or log out + back in
+> sudo usermod -aG docker $USER && newgrp docker
 > ```
-> Otherwise you'll have to prefix every command with `sudo`. Note that
-> membership in the `docker` group is effectively root on the host.
 
-### LAN access
+### LAN Access
 
-By default Docker publishes port 8000 on all interfaces, so Trove is
-reachable from every device on your local network. On first run a random
-session secret is generated and stored in `./config/session.secret` — back
-it up together with `./config/trove.db`.
+Docker publishes port 8000 on all interfaces by default. For remote access, put a reverse proxy (Caddy, Traefik, nginx) with HTTPS in front.
 
-If you want to lock the service to a single interface, change the `ports`
-mapping in `docker-compose.yml` to e.g. `"192.168.0.50:8000:8000"`. For
-remote/Internet access, put a reverse proxy (Caddy, Traefik, nginx) with
-HTTPS in front of the container.
+To lock to a single interface:
+```yaml
+# docker-compose.yml
+ports:
+  - "192.168.0.50:8000:8000"
+```
+
+### Data
+
+All persistent data lives in `./config/`:
+- `trove.db` — SQLite database
+- `session.secret` — encryption key for stored credentials
+
+Back up both files, or use the built-in **Backup & Restore** in Settings.
+
+---
 
 ## Development
 
-Backend:
+**Backend** (Python 3.12+, FastAPI):
 
 ```bash
 cd backend
@@ -56,7 +106,7 @@ uv run alembic upgrade head
 uv run uvicorn trove.main:app --reload
 ```
 
-Frontend:
+**Frontend** (SvelteKit 5, TypeScript):
 
 ```bash
 cd web
@@ -65,6 +115,30 @@ pnpm dev
 ```
 
 The Svelte dev server proxies `/api/*` to `http://localhost:8000`.
+
+---
+
+## Tech Stack
+
+| Layer | Tech |
+|-------|------|
+| Backend | Python 3.12, FastAPI, SQLModel, Alembic, APScheduler |
+| Frontend | SvelteKit 5, TypeScript, Tailwind CSS, Lucide icons |
+| Database | SQLite (WAL mode, busy_timeout) |
+| AI | litellm + Ollama (optional) |
+| Container | Docker, single image (~200MB) |
+
+---
+
+## Support
+
+If Trove saves you time, consider supporting the project:
+
+<a href="https://www.buymeacoffee.com/MasterDraco" target="_blank">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50">
+</a>
+
+---
 
 ## License
 
