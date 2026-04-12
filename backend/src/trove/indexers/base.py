@@ -25,6 +25,7 @@ class IndexerType(StrEnum):
     NEWZNAB = "newznab"
     TORZNAB = "torznab"
     CARDIGANN = "cardigann"
+    UNIT3D = "unit3d"
     CUSTOM = "custom"
 
 

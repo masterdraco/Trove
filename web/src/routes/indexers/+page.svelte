@@ -290,6 +290,7 @@
               <option value="newznab">Newznab (Usenet)</option>
               <option value="torznab">Torznab (Torrents)</option>
               <option value="cardigann">Cardigann (YAML)</option>
+              <option value="unit3d">UNIT3D (Aither, Blutopia, Nordicbytes, …)</option>
             </select>
           </label>
           <label class="block">

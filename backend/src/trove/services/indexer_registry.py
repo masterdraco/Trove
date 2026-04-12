@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from trove.clients.base import Protocol
-from trove.indexers.base import Indexer, IndexerError, IndexerType
+from trove.indexers.base import Category, Indexer, IndexerError, IndexerType
 from trove.indexers.cardigann import CardigannIndexer, load_definition_yaml
 from trove.indexers.newznab import NewznabIndexer
+from trove.indexers.unit3d import Unit3dIndexer
 from trove.models.indexer import IndexerRow
 from trove.utils.crypto import decrypt_json, encrypt_json
 
@@ -38,6 +39,30 @@ def _build(
         definition = load_definition_yaml(definition_yaml)
         definition.name = name
         return CardigannIndexer(definition, base_url=base_url)
+    if indexer_type is IndexerType.UNIT3D:
+        api_key = creds.get("api_key")
+        if not api_key:
+            raise IndexerError(f"{name}: api_key required")
+        # Optional per-tracker category mapping. Stored in credentials so
+        # the user can override the defaults without editing code:
+        # {"api_key": "...", "category_map": {"movies": [1], "tv": [2]}}
+        raw_map = creds.get("category_map")
+        category_map: dict[Category, list[int]] | None = None
+        if isinstance(raw_map, dict):
+            category_map = {}
+            for k, v in raw_map.items():
+                try:
+                    cat = Category(k)
+                except ValueError:
+                    continue
+                if isinstance(v, list):
+                    category_map[cat] = [int(i) for i in v if isinstance(i, (int, str))]
+        return Unit3dIndexer(
+            name=name,
+            base_url=base_url,
+            api_key=api_key,
+            category_map=category_map,
+        )
     raise IndexerError(f"unsupported indexer type: {indexer_type}")
 
 
