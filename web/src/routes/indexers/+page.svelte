@@ -437,27 +437,27 @@
               required={editingId === null}
               placeholder={editingId !== null
                 ? "•••••• (leave blank to keep existing)"
-                : "PHPSESSID=abc123; rartracker=def456"}
+                : "pass=abc123def456; PHPSESSID=xyz789; vid=a1b2c3d4"}
               class="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none ring-ring focus:ring-2"
             ></textarea>
-            <span class="mt-1 block text-xs text-muted-foreground">
-              Log in to the tracker in your browser, open DevTools → Application → Cookies,
-              and copy the full cookie header for the tracker domain. Session cookies expire —
-              you'll need to re-paste when searches start failing with "session expired".
-            </span>
+            <div class="mt-1.5 space-y-1 text-xs text-muted-foreground">
+              <p>Paste the full cookie string from your browser. It typically contains three parts:</p>
+              <code class="block rounded bg-muted/50 px-2 py-1 font-mono text-[11px]">pass=4acb...4e21; PHPSESSID=r2t8...3kp9; vid=a8f2...9c01</code>
+              <p><strong>How to get it:</strong> Log in to the tracker → F12 (DevTools) → Network tab → click any request to the tracker → copy the <code>Cookie</code> header value.</p>
+              <p>Session cookies expire periodically — update here when searches start failing.</p>
+            </div>
           </label>
           <label class="block">
-            <span class="mb-1 block text-sm font-medium">Passkey</span>
+            <span class="mb-1 block text-sm font-medium">Passkey <span class="font-normal text-muted-foreground">(optional)</span></span>
             <input
               type="password"
               bind:value={form.passkey}
-              placeholder={editingId !== null ? "•••••• (leave blank to keep)" : ""}
+              placeholder={editingId !== null ? "•••••• (leave blank to keep)" : "025c82f6...e83cedd5"}
               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-ring focus:ring-2"
             />
-            <span class="mt-1 block text-xs text-muted-foreground">
-              From your tracker profile page — used to build download URLs. Optional for
-              testing the search; required for actually grabbing torrents.
-            </span>
+            <div class="mt-1.5 text-xs text-muted-foreground">
+              Found on your tracker profile page. Not required — Trove uses session cookies for both search and downloads.
+            </div>
           </label>
         {:else if form.type !== "cardigann"}
           <label class="block">
