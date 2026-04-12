@@ -317,7 +317,7 @@
                       </div>
                     </div>
                   </div>
-                  {#if h.failures_24h > 0 && h.last_error_message}
+                  {#if h.failures_24h > 0 && h.last_error_message && (!h.last_success_at || (h.last_failure_at && h.last_failure_at > h.last_success_at))}
                     <div
                       class="mt-1 truncate text-xs text-destructive"
                       title={h.last_error_message}
