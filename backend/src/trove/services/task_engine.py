@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 import structlog
 import yaml
 from sqlmodel import Session, select
@@ -23,6 +24,7 @@ from trove.clients.base import (
 from trove.indexers.base import Category
 from trove.models.client import Client
 from trove.models.feed import FeedRow, RssItemRow
+from trove.models.indexer import IndexerRow
 from trove.models.task import SeenReleaseRow, TaskRow, TaskRunRow
 from trove.parsing.title import (
     extract_episode,
@@ -37,6 +39,7 @@ from trove.services import (
     quality_profile,
     search_service,
 )
+from trove.utils.crypto import decrypt_json
 
 log = structlog.get_logger()
 
@@ -350,6 +353,59 @@ class _SendOutcome:
     identifier: str | None = None
 
 
+async def _prefetch_torrent(
+    session: Session,
+    hit: search_service.SearchHit,
+    logger: io.StringIO,
+) -> bytes | None:
+    """Pre-fetch a .torrent file server-side using the indexer's credentials.
+
+    Download clients (Transmission, Deluge) fetch URLs with their own
+    HTTP client and don't carry indexer cookies/tokens. Private trackers
+    that require cookie auth for downloads (e.g. RarTracker/Superbits)
+    will return 401 to the client. We solve this by fetching the
+    .torrent here, where we have access to the indexer's stored
+    credentials, and passing raw content to the client instead of a URL.
+
+    Returns the .torrent bytes on success, or ``None`` if the fetch
+    isn't needed or fails (callers fall back to URL mode).
+    """
+    url = hit.download_url
+    if not url or not url.startswith(("http://", "https://")):
+        return None
+    source = hit.source
+    if not source or source.startswith("rss:"):
+        return None
+
+    # Look up the indexer to get auth credentials.
+    indexer = session.exec(select(IndexerRow).where(IndexerRow.name == source)).first()
+    headers: dict[str, str] = {}
+    if indexer is not None:
+        try:
+            creds = decrypt_json(indexer.credentials_cipher)
+        except Exception:
+            creds = {}
+        cookie = creds.get("session_cookie")
+        if isinstance(cookie, str) and cookie:
+            headers["Cookie"] = cookie
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
+            resp = await c.get(url, headers=headers)
+        if resp.status_code >= 400:
+            logger.write(f"  prefetch: HTTP {resp.status_code} for {source} (will try URL mode)\n")
+            return None
+        data = resp.content
+        # Quick sanity check — .torrent files are bencoded and start with 'd'.
+        if data and (data[0:1] == b"d" or data[0:2] == b"\x1f\x8b"):
+            logger.write(f"  prefetch: got {len(data)} bytes from {source}\n")
+            return data
+        logger.write("  prefetch: response not a torrent file, skip\n")
+        return None
+    except Exception as e:
+        logger.write(f"  prefetch: {e} (will try URL mode)\n")
+        return None
+
+
 async def _send_to_clients(
     session: Session,
     hit: search_service.SearchHit,
@@ -358,6 +414,13 @@ async def _send_to_clients(
 ) -> _SendOutcome:
     if not hit.download_url:
         return _SendOutcome(ok=False, message="no download url")
+
+    # Pre-fetch .torrent content server-side so download clients don't
+    # need the indexer's auth cookies. Falls back to URL mode on failure.
+    prefetched: bytes | None = None
+    if hit.protocol is Protocol.TORRENT and not (hit.download_url.startswith("magnet:")):
+        prefetched = await _prefetch_torrent(session, hit, logger)
+
     for name in output_names:
         client_row = session.exec(select(Client).where(Client.name == name)).first()
         if client_row is None:
@@ -379,7 +442,8 @@ async def _send_to_clients(
             release = Release(
                 title=hit.title,
                 protocol=hit.protocol,
-                download_url=hit.download_url,
+                download_url=hit.download_url if prefetched is None else None,
+                content=prefetched,
                 size=hit.size,
                 infohash=hit.infohash,
             )

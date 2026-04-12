@@ -9,8 +9,9 @@ extended, etc.).
 Auth is cookie-based — there's no passkey or bearer token that unlocks
 the search API. The user has to log in through the web UI (hCaptcha
 stops us from automating it) and paste the resulting session cookie
-into the indexer's credentials. The ``passkey`` is a separate value
-used only to build download URLs; we accept both.
+into the indexer's credentials. The download endpoint also uses
+cookie auth; the task engine's prefetch step attaches the session
+cookie automatically so download clients don't need tracker auth.
 
 Credentials layout:
 
@@ -228,8 +229,12 @@ class RartrackerIndexer(Indexer):
 
         torrent_id = row.get("id")
         download_url: str | None = None
-        if torrent_id is not None and self.passkey:
-            download_url = f"{self.base_url}/api/v1/torrents/download/{torrent_id}/{self.passkey}"
+        if torrent_id is not None:
+            # The download endpoint is cookie-authenticated — no passkey
+            # in the path. The task engine's prefetch step adds the
+            # session cookie automatically based on the indexer's stored
+            # credentials.
+            download_url = f"{self.base_url}/api/v1/torrents/download/{torrent_id}"
         elif row.get("download_url"):
             download_url = row["download_url"]
 
