@@ -30,7 +30,12 @@ from trove.parsing.title import (
     normalized_movie_name,
     normalized_show_prefix,
 )
-from trove.services import client_registry, notification_service, search_service
+from trove.services import (
+    client_registry,
+    notification_service,
+    quality_profile,
+    search_service,
+)
 
 log = structlog.get_logger()
 
@@ -54,6 +59,9 @@ def parse_task_config(config_yaml: str) -> dict[str, Any]:
     return data
 
 
+# Legacy hardcoded fallbacks — kept in sync with the built-in default
+# profile in services/quality_profile.py. Used when score_hit is called
+# without a profile (e.g. from tests or old call sites).
 _QUALITY_TIERS: dict[str, int] = {
     "2160p": 4,
     "4k": 4,
@@ -101,27 +109,44 @@ def score_hit(
     *,
     prefer_quality: str | None = None,
     max_size_mb: int | None = None,
+    profile: dict[str, Any] | None = None,
 ) -> float:
     """Rank a search hit. Higher is better. Used to sort candidates so
     the task engine picks the best one that also passes the hard filters.
+
+    When ``profile`` is given, its quality/source/codec tables and
+    prefer_quality override the hardcoded defaults. Otherwise the
+    historical hardcoded weights are used, so existing tests and old
+    tasks keep ranking the same way.
     """
     title = hit.title.lower()
     score = 0.0
 
+    if profile:
+        quality_tiers = {k: int(v) for k, v in (profile.get("quality_tiers") or {}).items()}
+        source_tiers = {k: int(v) for k, v in (profile.get("source_tiers") or {}).items()}
+        codec_bonus = {k: int(v) for k, v in (profile.get("codec_bonus") or {}).items()}
+        effective_prefer = profile.get("prefer_quality") or prefer_quality
+    else:
+        quality_tiers = _QUALITY_TIERS
+        source_tiers = _SOURCE_TIERS
+        codec_bonus = _CODEC_BONUS
+        effective_prefer = prefer_quality
+
     # Quality tier (2160 > 1080 > 720 …)
-    score += _match_tier(title, _QUALITY_TIERS) * 100
+    score += _match_tier(title, quality_tiers) * 100
 
     # Preferred quality gets a soft bonus so it wins when available, but
     # does NOT disqualify lower qualities if nothing else matches.
-    if prefer_quality and prefer_quality.lower() in title:
+    if effective_prefer and str(effective_prefer).lower() in title:
         score += 500
 
     # Source — BluRay/Remux > WEB-DL > HDTV > DVD > CAM/TS
-    score += _match_tier(title, _SOURCE_TIERS) * 30
+    score += _match_tier(title, source_tiers) * 30
 
     # Codec — x265/HEVC preferred
     best_codec = 0
-    for codec, bonus in _CODEC_BONUS.items():
+    for codec, bonus in codec_bonus.items():
         if codec in title:
             best_codec = max(best_codec, bonus)
     score += best_codec * 10
@@ -540,6 +565,26 @@ async def run_task(
 
             # Rank hits so the first one that passes filters is the best
             # available, not just the first one the indexer returned.
+            # Resolve quality profile if the task references one; otherwise
+            # the hardcoded defaults keep the old behaviour. Profile
+            # reject_tokens are merged into the filter dict so the hard
+            # filter honours them alongside any task-specific rejects.
+            profile_name = filters.get("quality_profile")
+            active_profile: dict[str, Any] | None = None
+            if isinstance(profile_name, str) and profile_name.strip():
+                active_profile = quality_profile.get_profile(session, profile_name.strip())
+                logger.write(f"  quality profile: {profile_name}\n")
+                profile_rejects = active_profile.get("reject_tokens") or []
+                if isinstance(profile_rejects, list) and profile_rejects:
+                    existing = filters.get("reject") or []
+                    if not isinstance(existing, list):
+                        existing = []
+                    merged = list(existing)
+                    for tok in profile_rejects:
+                        if tok not in merged:
+                            merged.append(tok)
+                    filters["reject"] = merged
+
             prefer_quality = filters.get("prefer_quality")
             max_size_mb_cfg = (
                 filters.get("max_size_mb") if isinstance(filters.get("max_size_mb"), int) else None
@@ -554,6 +599,7 @@ async def run_task(
                     h,
                     prefer_quality=prefer_quality_str,
                     max_size_mb=max_size_mb_cfg,
+                    profile=active_profile,
                 ),
                 reverse=True,
             )

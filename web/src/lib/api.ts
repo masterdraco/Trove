@@ -150,6 +150,21 @@ export type NotificationMeta = {
   provider_types: NotificationProviderType[];
 };
 
+export type QualityProfile = {
+  name: string;
+  quality_tiers: Record<string, number>;
+  source_tiers: Record<string, number>;
+  codec_bonus: Record<string, number>;
+  reject_tokens: string[];
+  prefer_quality: string | null;
+  min_acceptable_tier: number;
+};
+
+export type QualityProfilesOut = {
+  default: string;
+  profiles: Record<string, QualityProfile>;
+};
+
 export type SearchHit = {
   title: string;
   protocol: Protocol;
@@ -336,6 +351,22 @@ export const api = {
         `/api/clients/${id}/send`,
         { method: "POST", body: JSON.stringify(payload) }
       )
+  },
+
+  qualityProfiles: {
+    list: () => request<QualityProfilesOut>("/api/quality-profiles"),
+    upsert: (name: string, payload: QualityProfile) =>
+      request<QualityProfilesOut>(`/api/quality-profiles/${encodeURIComponent(name)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      }),
+    remove: (name: string) =>
+      request<void>(`/api/quality-profiles/${encodeURIComponent(name)}`, { method: "DELETE" }),
+    setDefault: (name: string) =>
+      request<QualityProfilesOut>("/api/quality-profiles/default", {
+        method: "POST",
+        body: JSON.stringify({ name })
+      })
   },
 
   notifications: {

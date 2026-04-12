@@ -23,6 +23,7 @@ from trove.api import health as health_router
 from trove.api import indexers as indexers_router
 from trove.api import logs as logs_router
 from trove.api import notifications as notifications_router
+from trove.api import quality_profiles as quality_profiles_router
 from trove.api import search as search_router
 from trove.api import system as system_router
 from trove.api import tasks as tasks_router
@@ -88,6 +89,11 @@ def create_app() -> FastAPI:
         notifications_router.router,
         prefix="/api/notifications",
         tags=["notifications"],
+    )
+    app.include_router(
+        quality_profiles_router.router,
+        prefix="/api/quality-profiles",
+        tags=["quality-profiles"],
     )
     app.include_router(torznab_router.router, prefix="/torznab", tags=["torznab"])
 
