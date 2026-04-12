@@ -17,6 +17,28 @@
 
 ---
 
+## Screenshots
+
+<details>
+<summary><strong>Click to expand screenshots</strong></summary>
+
+| | |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Discover](docs/screenshots/discover.png) |
+| Dashboard — stats and recent activity | Discover — browse TMDB trending & upcoming |
+| ![Downloads](docs/screenshots/downloads.png) | ![Tasks](docs/screenshots/tasks.png) |
+| Downloads — live progress bars | Tasks — YAML config with dry run |
+| ![Watchlist](docs/screenshots/watchlist.png) | ![Calendar](docs/screenshots/calendar.png) |
+| Watchlist — track movies & series | Calendar — Sonarr-style month grid |
+| ![Quality Profiles](docs/screenshots/quality-profiles.png) | ![Notifications](docs/screenshots/notifications.png) |
+| Quality Profiles — custom ranking weights | Notifications — Discord, Telegram, ntfy |
+| ![Search](docs/screenshots/search.png) | ![AI](docs/screenshots/ai.png) |
+| Search — multi-indexer results | AI — natural language task creation |
+
+</details>
+
+---
+
 ## Features
 
 ### Search & Indexers
