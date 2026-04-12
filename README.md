@@ -83,6 +83,16 @@
 
 ## Quick Start (Docker)
 
+### Prerequisites
+
+- **Docker** and **Docker Compose** (v2)
+- **Docker Buildx** — required to build the image. Most Docker Desktop installs include it, but on Linux servers you may need to install it separately:
+  ```bash
+  sudo apt-get install docker-buildx-plugin
+  ```
+
+### Install
+
 ```bash
 git clone https://github.com/masterdraco/Trove.git
 cd Trove
