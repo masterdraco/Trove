@@ -47,5 +47,19 @@ class SeenReleaseRow(SQLModel, table=True):
     key: str = Field(index=True, max_length=256)
     title: str = Field(max_length=512)
     seen_at: datetime = Field(default_factory=_utcnow)
-    outcome: str = Field(max_length=32)  # sent | skipped | failed
+    outcome: str = Field(max_length=32)  # sent | skipped | failed | removed
     reason: str | None = Field(default=None, max_length=512)
+    # Which download client ended up accepting the release, so the
+    # poller knows where to look up its current state.
+    client_id: int | None = Field(default=None, foreign_key="client.id")
+    # NZBGet nzb_id / torrent hash / SABnzbd nzo_id / Deluge torrent id.
+    # Whatever AddResult.identifier returned at add-time.
+    grabbed_identifier: str | None = Field(default=None, max_length=128)
+    # Periodic download-state poll writes into these columns.
+    download_status: str | None = Field(default=None, max_length=16, index=True)
+    download_progress: float | None = Field(default=None)
+    download_size_bytes: int | None = Field(default=None)
+    download_downloaded_bytes: int | None = Field(default=None)
+    download_eta_seconds: int | None = Field(default=None)
+    download_error_message: str | None = Field(default=None, max_length=512)
+    download_state_at: datetime | None = Field(default=None)

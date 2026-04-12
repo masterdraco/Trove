@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import math
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -285,14 +286,22 @@ def _pass_filter(hit: search_service.SearchHit, filters: dict[str, Any]) -> tupl
     return True, "ok"
 
 
+@dataclass(slots=True)
+class _SendOutcome:
+    ok: bool
+    message: str
+    client_id: int | None = None
+    identifier: str | None = None
+
+
 async def _send_to_clients(
     session: Session,
     hit: search_service.SearchHit,
     output_names: list[str],
     logger: io.StringIO,
-) -> tuple[bool, str]:
+) -> _SendOutcome:
     if not hit.download_url:
-        return False, "no download url"
+        return _SendOutcome(ok=False, message="no download url")
     for name in output_names:
         client_row = session.exec(select(Client).where(Client.name == name)).first()
         if client_row is None:
@@ -330,12 +339,17 @@ async def _send_to_clients(
                 result = await driver.add_nzb(release, options)
             logger.write(f"  output {name}: {result.ok} ({result.message or ''})\n")
             if result.ok:
-                return True, name
+                return _SendOutcome(
+                    ok=True,
+                    message=name,
+                    client_id=client_row.id,
+                    identifier=result.identifier,
+                )
         except ClientError as e:
             logger.write(f"  output {name}: {e}\n")
         finally:
             await driver.close()
-    return False, "no output accepted"
+    return _SendOutcome(ok=False, message="no output accepted")
 
 
 async def run_task(
@@ -558,16 +572,19 @@ async def run_task(
                     grabbed_keys.add(key)
                     accepted += 1
                     continue
-                sent, info = await _send_to_clients(session, hit, outputs, logger)
+                outcome = await _send_to_clients(session, hit, outputs, logger)
                 seen = SeenReleaseRow(
                     task_id=task.id or 0,
                     key=key,
                     title=hit.title,
-                    outcome="sent" if sent else "failed",
-                    reason=info[:512],
+                    outcome="sent" if outcome.ok else "failed",
+                    reason=outcome.message[:512],
+                    client_id=outcome.client_id,
+                    grabbed_identifier=outcome.identifier,
+                    download_status="queued" if outcome.ok and outcome.identifier else None,
                 )
                 session.add(seen)
-                if sent:
+                if outcome.ok:
                     grabbed_keys.add(key)
                     accepted += 1
         # Distinguish between "ran cleanly and grabbed something", "ran

@@ -12,6 +12,8 @@ from trove.clients.base import (
     ClientError,
     ClientHealth,
     ClientType,
+    DownloadState,
+    DownloadStatus,
     Release,
     UsenetClient,
 )
@@ -161,3 +163,117 @@ class NzbgetClient(UsenetClient):
             identifier=str(nzb_id) if ok else None,
             message="added" if ok else "nzbget refused release",
         )
+
+    async def get_state(self, identifier: str) -> DownloadState:
+        """Resolve an nzb_id back to a DownloadState.
+
+        NZBGet splits state across two RPC calls:
+        - ``listgroups`` for things still in the queue or currently
+          downloading (each group has Kind, Status, FileSizeMB,
+          RemainingSizeMB, DownloadedSizeMB, DownloadTimeSec, etc.)
+        - ``history`` for finished and failed items (ParStatus,
+          UnpackStatus, ScriptStatus, MoveStatus, Status)
+
+        We check listgroups first. If the id is there it's still
+        active. If not, we walk history and map the status strings to
+        our enum.
+        """
+        try:
+            nzb_id = int(identifier)
+        except ValueError:
+            return DownloadState(
+                status=DownloadStatus.UNKNOWN,
+                error_message=f"nzbget: invalid identifier {identifier!r}",
+            )
+
+        # Active queue — listgroups
+        try:
+            groups = await self._call("listgroups", [0])
+        except ClientError as e:
+            return DownloadState(status=DownloadStatus.UNKNOWN, error_message=str(e))
+
+        for g in groups or []:
+            if int(g.get("NZBID") or 0) != nzb_id:
+                continue
+            status_code = str(g.get("Status") or "").upper()
+            # Known statuses: QUEUED, PAUSED, DOWNLOADING, FETCHING,
+            # PP_QUEUED, LOADING_PARS, VERIFYING_SOURCES, REPAIRING,
+            # VERIFYING_REPAIRED, UNPACKING, CLEANING, RENAMING, MOVING,
+            # EXECUTING_SCRIPT, POSTPROCESS
+            if "PAUSED" in status_code:
+                status = DownloadStatus.PAUSED
+            elif status_code == "QUEUED":
+                status = DownloadStatus.QUEUED
+            elif "DOWNLOAD" in status_code or "FETCHING" in status_code:
+                status = DownloadStatus.DOWNLOADING
+            elif any(
+                tok in status_code
+                for tok in (
+                    "VERIFY",
+                    "REPAIR",
+                    "UNPACK",
+                    "MOVING",
+                    "RENAMING",
+                    "CLEANING",
+                    "LOADING_PARS",
+                    "EXECUTING",
+                    "POSTPROCESS",
+                    "PP_",
+                )
+            ):
+                status = DownloadStatus.VERIFYING
+            else:
+                status = DownloadStatus.DOWNLOADING
+            # NZBGet reports sizes in MB (as strings or ints). Prefer
+            # the "Lo"/"Hi" 64-bit pair when available, fall back to
+            # the MB field.
+            total_mb = int(g.get("FileSizeMB") or 0)
+            remaining_mb = int(g.get("RemainingSizeMB") or 0)
+            downloaded_mb = max(total_mb - remaining_mb, 0)
+            total_bytes = total_mb * 1024 * 1024 if total_mb else None
+            downloaded_bytes = downloaded_mb * 1024 * 1024 if total_mb else None
+            progress = (downloaded_mb / total_mb) if total_mb > 0 else 0.0
+            return DownloadState(
+                status=status,
+                progress=progress,
+                size_bytes=total_bytes,
+                downloaded_bytes=downloaded_bytes,
+                display_title=g.get("NZBName") or g.get("NZBFilename"),
+            )
+
+        # Not in the active queue — look in history
+        try:
+            history = await self._call("history", [False])
+        except ClientError as e:
+            return DownloadState(status=DownloadStatus.UNKNOWN, error_message=str(e))
+
+        for h in history or []:
+            if int(h.get("NZBID") or 0) != nzb_id:
+                continue
+            status_code = str(h.get("Status") or "").upper()
+            # History statuses look like "SUCCESS/ALL", "FAILURE/PAR",
+            # "DELETED/HEALTH", "WARNING/DAMAGED", etc.
+            head = status_code.split("/")[0] if "/" in status_code else status_code
+            if head == "SUCCESS":
+                status = DownloadStatus.COMPLETED
+            elif head in ("FAILURE", "DELETED"):
+                status = DownloadStatus.FAILED
+            elif head == "WARNING":
+                # Warnings still land on disk, treat as completed.
+                status = DownloadStatus.COMPLETED
+            else:
+                status = DownloadStatus.UNKNOWN
+
+            total_mb = int(h.get("FileSizeMB") or 0)
+            total_bytes = total_mb * 1024 * 1024 if total_mb else None
+
+            return DownloadState(
+                status=status,
+                progress=1.0 if status == DownloadStatus.COMPLETED else 0.0,
+                size_bytes=total_bytes,
+                downloaded_bytes=total_bytes if status == DownloadStatus.COMPLETED else None,
+                error_message=status_code if status == DownloadStatus.FAILED else None,
+                display_title=h.get("NZBName") or h.get("NZBFilename"),
+            )
+
+        return DownloadState(status=DownloadStatus.NOT_FOUND)

@@ -11,6 +11,8 @@ from trove.clients.base import (
     ClientError,
     ClientHealth,
     ClientType,
+    DownloadState,
+    DownloadStatus,
     Release,
     TorrentClient,
 )
@@ -120,4 +122,74 @@ class TransmissionClient(TorrentClient):
             ok=True,
             identifier=info.get("hashString") or str(info.get("id")),
             message="added" if "torrent-added" in result else "duplicate",
+        )
+
+    async def get_state(self, identifier: str) -> DownloadState:
+        # Transmission torrent-get accepts hashString or id as the row
+        # selector. We stored whichever one was available at add-time.
+        try:
+            args = await self._rpc(
+                "torrent-get",
+                {
+                    "ids": [identifier],
+                    "fields": [
+                        "id",
+                        "name",
+                        "status",
+                        "percentDone",
+                        "totalSize",
+                        "leftUntilDone",
+                        "sizeWhenDone",
+                        "eta",
+                        "errorString",
+                        "error",
+                    ],
+                },
+            )
+        except ClientError as e:
+            return DownloadState(status=DownloadStatus.UNKNOWN, error_message=str(e))
+        torrents = args.get("torrents") or []
+        if not torrents:
+            return DownloadState(status=DownloadStatus.NOT_FOUND)
+        t = torrents[0]
+        # Transmission status codes:
+        #   0=stopped (paused by user)
+        #   1=queued to verify, 2=verifying
+        #   3=queued to download, 4=downloading
+        #   5=queued to seed, 6=seeding (i.e. completed)
+        code = int(t.get("status") or 0)
+        percent = float(t.get("percentDone") or 0.0)
+        error_code = int(t.get("error") or 0)
+        error_string = t.get("errorString") or None
+        if error_code != 0 and error_string:
+            status = DownloadStatus.FAILED
+        elif code == 0:
+            status = DownloadStatus.PAUSED
+        elif code in (1, 2):
+            status = DownloadStatus.VERIFYING
+        elif code == 3:
+            status = DownloadStatus.QUEUED
+        elif code == 4:
+            status = DownloadStatus.DOWNLOADING
+        elif code in (5, 6):
+            # Seeding means the file is fully on disk.
+            status = DownloadStatus.COMPLETED
+        else:
+            status = DownloadStatus.UNKNOWN
+
+        total = int(t.get("totalSize") or t.get("sizeWhenDone") or 0) or None
+        left = int(t.get("leftUntilDone") or 0)
+        downloaded = (total - left) if total is not None else None
+        eta_raw = int(t.get("eta") or 0)
+        # Transmission uses negative ETAs to signal "unknown" / "not downloading"
+        eta = eta_raw if eta_raw > 0 else None
+
+        return DownloadState(
+            status=status,
+            progress=percent,
+            size_bytes=total,
+            downloaded_bytes=downloaded,
+            eta_seconds=eta,
+            error_message=error_string if error_code != 0 else None,
+            display_title=t.get("name"),
         )

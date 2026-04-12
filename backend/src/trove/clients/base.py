@@ -66,6 +66,42 @@ class AddResult:
     message: str | None = None
 
 
+class DownloadStatus(StrEnum):
+    QUEUED = "queued"
+    DOWNLOADING = "downloading"
+    VERIFYING = "verifying"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PAUSED = "paused"
+    NOT_FOUND = "not_found"
+    UNKNOWN = "unknown"
+
+
+@dataclass(slots=True)
+class DownloadState:
+    """Snapshot of a single download's current state in its client.
+
+    Returned by ``DownloadClient.get_state()`` so the periodic poller
+    can track state transitions (``queued → downloading → completed``)
+    and fire notification events. All fields except ``status`` are
+    optional because not every client exposes every field — e.g.
+    Transmission doesn't report ETA on seed-queue items, NZBGet
+    reports bytes in different units per section, etc. Callers should
+    treat missing fields as "unknown, leave prior value".
+    """
+
+    status: DownloadStatus
+    progress: float = 0.0  # 0.0 .. 1.0
+    size_bytes: int | None = None
+    downloaded_bytes: int | None = None
+    eta_seconds: int | None = None
+    error_message: str | None = None
+    # The actual on-disk title the client is using, if different from
+    # the one we submitted — useful for notifications that want to show
+    # the release name the user will see in their media library.
+    display_title: str | None = None
+
+
 @dataclass(slots=True)
 class ClientHealth:
     ok: bool
@@ -88,6 +124,17 @@ class DownloadClient(abc.ABC):
 
     @abc.abstractmethod
     async def list_categories(self) -> list[str]: ...
+
+    async def get_state(self, identifier: str) -> DownloadState:
+        """Return the current download state for a previously-submitted item.
+
+        Identifier is whatever ``AddResult.identifier`` the original
+        ``add_torrent`` / ``add_nzb`` call returned — NZBGet's nzb_id,
+        a torrent's infohash, SABnzbd's nzo_id, etc. Drivers must
+        implement this; the default just returns ``UNKNOWN`` so old
+        subclasses keep working without crashing the poller.
+        """
+        return DownloadState(status=DownloadStatus.UNKNOWN)
 
     async def close(self) -> None:
         """Release any resources (http clients, sessions). Safe to call repeatedly."""

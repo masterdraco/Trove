@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from trove.db import get_engine
 from trove.models.feed import FeedRow
 from trove.models.task import TaskRow
-from trove.services import feed_poller, task_engine
+from trove.services import download_poller, feed_poller, task_engine
 
 log = structlog.get_logger()
 
@@ -138,12 +138,37 @@ def load_all_feeds() -> None:
             schedule_feed(feed)
 
 
+async def _execute_download_poll() -> None:
+    try:
+        stats = await download_poller.poll_once()
+    except Exception as e:  # pragma: no cover - defensive
+        log.warning("scheduler.download_poll.failed", error=str(e))
+        return
+    if stats.get("polled", 0) > 0 or stats.get("errors", 0) > 0:
+        log.info("scheduler.download_poll", **stats)
+
+
+def schedule_download_poller(interval_seconds: int = 60) -> None:
+    sched = get_scheduler()
+    job_id = "download_poller"
+    if sched.get_job(job_id):
+        sched.remove_job(job_id)
+    sched.add_job(
+        _execute_download_poll,
+        trigger=IntervalTrigger(seconds=interval_seconds),
+        id=job_id,
+        replace_existing=True,
+    )
+    log.info("scheduler.download_poller_scheduled", interval_s=interval_seconds)
+
+
 def start_scheduler() -> None:
     sched = get_scheduler()
     if not sched.running:
         sched.start()
     load_all_tasks()
     load_all_feeds()
+    schedule_download_poller()
 
 
 def stop_scheduler() -> None:

@@ -10,6 +10,8 @@ from trove.clients.base import (
     ClientError,
     ClientHealth,
     ClientType,
+    DownloadState,
+    DownloadStatus,
     Release,
     UsenetClient,
 )
@@ -115,3 +117,105 @@ class SabnzbdClient(UsenetClient):
         nzo_ids = body.get("nzo_ids") or []
         identifier = nzo_ids[0] if nzo_ids else None
         return AddResult(ok=bool(body.get("status", True)), identifier=identifier)
+
+    async def get_state(self, identifier: str) -> DownloadState:
+        """Resolve a SABnzbd nzo_id to a DownloadState.
+
+        SAB splits work into a live queue (``mode=queue``) and a
+        completed/failed history (``mode=history``). We check the
+        queue first, then the history, then give up with NOT_FOUND.
+        """
+        try:
+            queue = await self._get({"mode": "queue"})
+        except ClientError as e:
+            return DownloadState(status=DownloadStatus.UNKNOWN, error_message=str(e))
+
+        slots = ((queue.get("queue") or {}).get("slots")) or []
+        for slot in slots:
+            if slot.get("nzo_id") != identifier:
+                continue
+            sab_status = str(slot.get("status") or "").lower()
+            # SAB queue statuses: Queued, Paused, Downloading, Fetching,
+            # Grabbing, Checking, QuickCheck, Repairing, Extracting,
+            # Moving, Running (post-processing), Verifying
+            if sab_status == "paused":
+                status = DownloadStatus.PAUSED
+            elif sab_status in ("queued", "grabbing"):
+                status = DownloadStatus.QUEUED
+            elif sab_status in ("downloading", "fetching"):
+                status = DownloadStatus.DOWNLOADING
+            elif sab_status in (
+                "checking",
+                "quickcheck",
+                "repairing",
+                "extracting",
+                "moving",
+                "running",
+                "verifying",
+            ):
+                status = DownloadStatus.VERIFYING
+            else:
+                status = DownloadStatus.UNKNOWN
+
+            total_mb = float(slot.get("mb") or 0)
+            remaining_mb = float(slot.get("mbleft") or 0)
+            downloaded_mb = max(total_mb - remaining_mb, 0)
+            total_bytes = int(total_mb * 1024 * 1024) if total_mb > 0 else None
+            downloaded_bytes = int(downloaded_mb * 1024 * 1024) if total_mb > 0 else None
+            progress = downloaded_mb / total_mb if total_mb > 0 else 0.0
+            # SAB gives timeleft as "HH:MM:SS" — parse to seconds
+            eta: int | None = None
+            timeleft = slot.get("timeleft")
+            if isinstance(timeleft, str) and ":" in timeleft:
+                try:
+                    parts = [int(p) for p in timeleft.split(":")]
+                    while len(parts) < 3:
+                        parts.insert(0, 0)
+                    eta = parts[0] * 3600 + parts[1] * 60 + parts[2]
+                    if eta <= 0:
+                        eta = None
+                except ValueError:
+                    eta = None
+
+            return DownloadState(
+                status=status,
+                progress=progress,
+                size_bytes=total_bytes,
+                downloaded_bytes=downloaded_bytes,
+                eta_seconds=eta,
+                display_title=slot.get("filename") or slot.get("name"),
+            )
+
+        # Fall through to history
+        try:
+            history_body = await self._get({"mode": "history", "limit": 100})
+        except ClientError as e:
+            return DownloadState(status=DownloadStatus.UNKNOWN, error_message=str(e))
+        history_slots = ((history_body.get("history") or {}).get("slots")) or []
+        for slot in history_slots:
+            if slot.get("nzo_id") != identifier:
+                continue
+            sab_status = str(slot.get("status") or "").lower()
+            fail_message = slot.get("fail_message") or None
+            if sab_status == "completed":
+                status = DownloadStatus.COMPLETED
+            elif sab_status == "failed":
+                status = DownloadStatus.FAILED
+            else:
+                status = DownloadStatus.UNKNOWN
+            bytes_raw = slot.get("bytes") or slot.get("size") or 0
+            size_bytes: int | None = None
+            try:
+                size_bytes = int(bytes_raw)
+            except (TypeError, ValueError):
+                size_bytes = None
+            return DownloadState(
+                status=status,
+                progress=1.0 if status == DownloadStatus.COMPLETED else 0.0,
+                size_bytes=size_bytes,
+                downloaded_bytes=(size_bytes if status == DownloadStatus.COMPLETED else None),
+                error_message=fail_message,
+                display_title=slot.get("name"),
+            )
+
+        return DownloadState(status=DownloadStatus.NOT_FOUND)

@@ -12,6 +12,8 @@ from trove.clients.base import (
     ClientError,
     ClientHealth,
     ClientType,
+    DownloadState,
+    DownloadStatus,
     Release,
     TorrentClient,
 )
@@ -120,3 +122,64 @@ class DelugeClient(TorrentClient):
                 await self._call("label.set_torrent", [torrent_id, label])
 
         return AddResult(ok=True, identifier=str(torrent_id), message="added")
+
+    async def get_state(self, identifier: str) -> DownloadState:
+        await self._ensure_login()
+        try:
+            status = await self._call(
+                "core.get_torrent_status",
+                [
+                    identifier,
+                    [
+                        "name",
+                        "state",
+                        "progress",
+                        "total_size",
+                        "total_done",
+                        "eta",
+                        "error",
+                        "error_string",
+                        "is_finished",
+                    ],
+                ],
+            )
+        except ClientError as e:
+            return DownloadState(status=DownloadStatus.UNKNOWN, error_message=str(e))
+        # Deluge returns an empty dict when the torrent is not found.
+        if not status:
+            return DownloadState(status=DownloadStatus.NOT_FOUND)
+        state_str = str(status.get("state") or "").lower()
+        # Deluge state strings: "Downloading", "Seeding", "Queued",
+        # "Checking", "Allocating", "Paused", "Error", "Moving".
+        error = status.get("error") or status.get("error_string") or None
+        if error or state_str == "error":
+            status_enum = DownloadStatus.FAILED
+        elif state_str == "paused":
+            status_enum = DownloadStatus.PAUSED
+        elif state_str in ("checking", "allocating", "moving"):
+            status_enum = DownloadStatus.VERIFYING
+        elif state_str == "queued":
+            status_enum = DownloadStatus.QUEUED
+        elif state_str == "downloading":
+            status_enum = DownloadStatus.DOWNLOADING
+        elif state_str == "seeding" or status.get("is_finished"):
+            status_enum = DownloadStatus.COMPLETED
+        else:
+            status_enum = DownloadStatus.UNKNOWN
+
+        # Deluge reports progress as 0-100, not 0-1
+        progress_pct = float(status.get("progress") or 0.0)
+        progress = progress_pct / 100.0 if progress_pct > 1.0 else progress_pct
+        total = int(status.get("total_size") or 0) or None
+        done = int(status.get("total_done") or 0) or None
+        eta = int(status.get("eta") or 0) or None
+
+        return DownloadState(
+            status=status_enum,
+            progress=progress,
+            size_bytes=total,
+            downloaded_bytes=done,
+            eta_seconds=eta,
+            error_message=str(error) if error else None,
+            display_title=status.get("name"),
+        )
