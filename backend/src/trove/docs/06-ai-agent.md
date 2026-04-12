@@ -23,14 +23,38 @@ This propose-confirm-execute pattern means the LLM never performs destructive ac
 ### `add_series`
 > "add the big bang theory to my downloads"
 > "I want every new episode of Severance in 1080p"
+> "grab severance via usenet only"
 
 Creates a task that hourly searches for new episodes of a specific show and sends them to your default torrent client.
 
 ### `add_movie`
 > "i want dune part two in 4k"
 > "download The Godfather 1972 whenever it shows up"
+> "download scream 7 via torrent"
 
 Creates a task that searches every 2 hours for a specific movie and downloads the best-quality match.
+
+### Protocol hints
+
+You can append **"via torrent"**, **"via usenet"**, **"as nzb"**, or **"only torrent"** to any `add_series` / `add_movie` request and the agent will:
+
+1. Route the task's outputs to a client of that protocol (so usenet hits don't end up at your torrent client and vice versa)
+2. Narrow the search to indexers of that protocol (no more "protocol mismatch" failures in the task log)
+3. **Refuse to create the task** if no enabled indexer speaks the requested protocol — you'll get a clear error pointing at the Indexers page instead of a broken task that silently `no_match`es forever
+
+If both protocols are configured, the agent uses both — the task config picks up the matching indexer type automatically.
+
+### Quick probe
+
+For `add_series` and `add_movie`, the agent runs a **cheap search** against your enabled indexers before returning the proposal. The result is appended to the description card:
+
+> **Quick probe**: found **18 hits** matching your query across your enabled indexers. Best guess from a quick probe: *Scream.7.2026.Retail.DKsubs.2160p.DV.HDR10P.HYBRiD.WEB-DL.HEVC.DDP.Atmos.5.1-CiUHD*.
+
+or, for a release that isn't out yet:
+
+> **Quick probe**: **0 hits** right now — none of your enabled indexers returned anything matching this query. The release may not be out yet, or your indexers may not carry it. You can still create the task; it'll start grabbing the moment something lands.
+
+This means you know *before* you click Confirm whether the task has any hope of working in its current form. The probe is capped at 5 hits per indexer with a 10-second timeout, so it adds at most a second or two to the proposal flow.
 
 ### `add_filter_task`
 > "always grab all movies newer than 2022 in 1080p"

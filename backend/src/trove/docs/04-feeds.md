@@ -6,7 +6,9 @@ description: Poll tracker RSS feeds and build a searchable local cache.
 
 # RSS Feeds
 
-While **indexers** let you search in real time, **RSS feeds** let you continuously pull new releases from trackers and store them in a local searchable cache. This is the recommended approach for private trackers that expose an RSS endpoint — it hits the tracker gently, it's the standard mechanism for "new releases", and it unlocks historical search across your personal release history.
+While **indexers** let you search in real time, **RSS feeds** let you continuously pull new releases from trackers and store them in a local searchable cache. Useful for standing filter rules ("every new 4K movie my nordic tracker posts, automatically") where a continuous stream is cheaper than running the full search every cron cycle.
+
+> **Prefer an indexer when you can.** If your tracker speaks Newznab, Torznab, UNIT3D, or RarTracker, set it up as an **indexer** on the [Indexers](indexers) page instead of (or in addition to) an RSS feed. Indexers can reach the full back-catalogue and accept structured queries (`tmdbId`, `season`, etc.); RSS feeds only see what's been posted since you started polling. See the [RSS vs. indexers](indexers#rss-vs-indexers) section on the indexers page for the full trade-off table.
 
 ## How it works
 
@@ -30,6 +32,10 @@ On `/feeds`:
 7. Click **Save feed**
 
 The scheduler starts polling immediately on the interval — the first fetch happens after one interval, not right away. Click the **Poll** button on the feed row to force an immediate fetch.
+
+## Enable / disable
+
+Each feed row has an inline **Enabled** / **Disabled** toggle button (Power icon). Disabling stops polling but keeps the feed configuration, the cached items, and the retention schedule intact — useful when you want to temporarily pause a feed (rate-limit issues, tracker maintenance) without deleting it. Toggle back on and polling resumes on the configured interval.
 
 ## Expanding a feed
 
