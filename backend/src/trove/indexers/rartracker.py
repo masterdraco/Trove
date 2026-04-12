@@ -194,6 +194,19 @@ class RartrackerIndexer(Indexer):
             release = self._parse_row(row)
             if release is not None:
                 releases.append(release)
+        # Client-side sanity filter: when RarTracker's API finds zero
+        # real matches for the searchText, it falls back to returning a
+        # generic alphabetical list of torrents from across the site.
+        # Drop anything whose name doesn't contain every token from the
+        # query, so callers see an honest empty result instead of noise.
+        if query.terms:
+            import re as _re
+
+            def _toks(s: str) -> list[str]:
+                return [t for t in _re.split(r"[^a-z0-9]+", s.lower()) if t]
+
+            wanted = _toks(query.terms)
+            releases = [r for r in releases if all(t in _toks(r.title) for t in wanted)]
         return releases
 
     def _extract_rows(self, body: Any) -> list[Any]:
