@@ -10,26 +10,32 @@ Trove exposes its own **Torznab-compatible API** at `/torznab/api`. That means S
 
 This is the cleanest way to use Trove alongside the *Arr stack: configure all your trackers once in Trove, and Sonarr/Radarr only need to know about Trove.
 
-## Endpoint
+## Finding your endpoint + key
+
+Go to **Settings → Torznab export** in the Trove UI. That panel shows:
+
+- A ready-to-paste **Sonarr / Radarr URL** with the apikey already baked in
+- The **API key** on its own, with show/hide and copy buttons
+- An **example search** URL you can curl directly to sanity-check
+
+Click the copy icon next to whichever field you need and paste it into Sonarr / Radarr. No shell access to the Trove host required.
+
+Under the hood the API key is the first 32 characters of your `config/session.secret` — the same secret we use to sign session cookies. We reuse it instead of generating a separate token to keep setup simple. If you restore from a backup the apikey also moves across automatically.
+
+## Endpoint format
 
 ```
 http://<trove-host>:8000/torznab/api?apikey=<YOUR_KEY>&t=caps
 ```
 
-The API key is the **first 32 characters of `config/session.secret`**. Find it by reading that file on the Trove host:
-
-```bash
-cat config/session.secret | cut -c1-32
-```
-
-(The same secret is used for session cookies — we reuse it instead of generating a separate token to keep setup simple.)
+Replace `<trove-host>` with wherever Trove is reachable from your Sonarr/Radarr host, and `<YOUR_KEY>` with what the Settings panel shows.
 
 ## Configuring Sonarr
 
 1. Sonarr → Settings → Indexers → **+** → Torznab (Custom)
 2. **Name**: `Trove`
 3. **URL**: `http://<trove-host>:8000/torznab/api`
-4. **API Key**: paste the 32-char prefix of session.secret
+4. **API Key**: paste from Trove → Settings → Torznab export → API key
 5. **Categories**: `5000, 5070` (TV + Anime)
 6. Click **Test** — should succeed
 7. Click **Save**
