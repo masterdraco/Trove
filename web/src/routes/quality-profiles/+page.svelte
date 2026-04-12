@@ -39,6 +39,13 @@
     "x264": 1, "h264": 1
   };
 
+  const AUDIO_PRESETS: Record<string, number> = {
+    "atmos": 3, "truehd": 3, "dts-hd": 3, "dts-hd.ma": 3, "dtshd": 3,
+    "ddp5.1": 2, "dd+5.1": 2, "eac3": 2,
+    "dd5.1": 1, "ac3": 1, "aac5.1": 1,
+    "aac": 0, "mp3": -1
+  };
+
   async function load() {
     loading = true;
     try {
@@ -68,6 +75,7 @@
       quality_tiers: { ...QUALITY_PRESETS },
       source_tiers: { ...SOURCE_PRESETS },
       codec_bonus: { ...CODEC_PRESETS },
+      audio_bonus: { ...AUDIO_PRESETS },
       reject_tokens: ["cam", "telesync", "hdcam", "workprint"],
       prefer_quality: "1080p",
       min_acceptable_tier: 0
@@ -325,6 +333,25 @@
                       type="number"
                       value={val}
                       oninput={(e) => updateTier(editProfile!.codec_bonus, key, (e.currentTarget as HTMLInputElement).value)}
+                      class="w-14 rounded border border-input bg-muted/40 px-2 py-0.5 text-center font-mono text-xs"
+                    />
+                  </div>
+                {/each}
+              </div>
+            </div>
+
+            <!-- Audio bonus -->
+            <div class="rounded-xl border border-border bg-card p-5">
+              <h4 class="text-sm font-semibold">Audio bonus</h4>
+              <p class="text-xs text-muted-foreground">Atmos/TrueHD &gt; DDP/EAC3 &gt; DD/AC3 &gt; AAC. Negative = penalty.</p>
+              <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {#each Object.entries(editProfile.audio_bonus || {}) as [key, val] (key)}
+                  <div class="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5">
+                    <span class="flex-1 font-mono text-xs">{key}</span>
+                    <input
+                      type="number"
+                      value={val}
+                      oninput={(e) => updateTier(editProfile!.audio_bonus, key, (e.currentTarget as HTMLInputElement).value)}
                       class="w-14 rounded border border-input bg-muted/40 px-2 py-0.5 text-center font-mono text-xs"
                     />
                   </div>

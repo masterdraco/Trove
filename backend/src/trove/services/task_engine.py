@@ -98,6 +98,21 @@ _CODEC_BONUS: dict[str, int] = {
     "x264": 1,
     "h264": 1,
 }
+_AUDIO_BONUS: dict[str, int] = {
+    "atmos": 3,
+    "truehd": 3,
+    "dts-hd": 3,
+    "dts-hd.ma": 3,
+    "dtshd": 3,
+    "ddp5.1": 2,
+    "dd+5.1": 2,
+    "eac3": 2,
+    "dd5.1": 1,
+    "ac3": 1,
+    "aac5.1": 1,
+    "aac": 0,
+    "mp3": -1,
+}
 
 
 def _match_tier(title_lower: str, table: dict[str, int]) -> int:
@@ -130,11 +145,13 @@ def score_hit(
         quality_tiers = {k: int(v) for k, v in (profile.get("quality_tiers") or {}).items()}
         source_tiers = {k: int(v) for k, v in (profile.get("source_tiers") or {}).items()}
         codec_bonus = {k: int(v) for k, v in (profile.get("codec_bonus") or {}).items()}
+        audio_bonus = {k: int(v) for k, v in (profile.get("audio_bonus") or {}).items()}
         effective_prefer = profile.get("prefer_quality") or prefer_quality
     else:
         quality_tiers = _QUALITY_TIERS
         source_tiers = _SOURCE_TIERS
         codec_bonus = _CODEC_BONUS
+        audio_bonus = _AUDIO_BONUS
         effective_prefer = prefer_quality
 
     # Quality tier (2160 > 1080 > 720 …)
@@ -154,6 +171,13 @@ def score_hit(
         if codec in title:
             best_codec = max(best_codec, bonus)
     score += best_codec * 10
+
+    # Audio — Atmos/TrueHD > DDP > DD > AAC
+    best_audio = 0
+    for audio, bonus in audio_bonus.items():
+        if audio in title:
+            best_audio = max(best_audio, bonus)
+    score += best_audio * 15
 
     # Size — slight bonus for bigger (proxy for quality) but only up to
     # max_size_mb. Hard filter handles the over-size case.

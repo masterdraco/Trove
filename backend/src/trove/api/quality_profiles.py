@@ -18,6 +18,7 @@ class QualityProfileIn(BaseModel):
     quality_tiers: dict[str, int] = Field(default_factory=dict)
     source_tiers: dict[str, int] = Field(default_factory=dict)
     codec_bonus: dict[str, int] = Field(default_factory=dict)
+    audio_bonus: dict[str, int] = Field(default_factory=dict)
     reject_tokens: list[str] = Field(default_factory=list)
     prefer_quality: str | None = None
     min_acceptable_tier: int = 0

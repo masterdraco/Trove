@@ -156,6 +156,7 @@ export type QualityProfile = {
   quality_tiers: Record<string, number>;
   source_tiers: Record<string, number>;
   codec_bonus: Record<string, number>;
+  audio_bonus: Record<string, number>;
   reject_tokens: string[];
   prefer_quality: string | null;
   min_acceptable_tier: number;
