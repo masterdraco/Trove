@@ -16,7 +16,7 @@ Trove ships with an optional **AI agent** that understands natural-language comm
 4. Trove turns that into a **proposed action** with a preview (task name, YAML, schedule, target client)
 5. You click **Confirm** — and only then does Trove actually create the resource
 
-This propose-confirm-execute pattern means the LLM never performs destructive actions directly. Even if gemma hallucinates, you see the full preview before anything is saved. Just click Cancel if it's wrong.
+This propose-confirm-execute pattern means the LLM never performs destructive actions directly. Even if the AI hallucinates, you see the full preview before anything is saved. Just click Cancel if it's wrong.
 
 ## Supported intents
 
