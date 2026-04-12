@@ -8,7 +8,7 @@ description: Push events to Discord, Telegram, ntfy, or any webhook.
 
 Trove can push real-time notifications to your messaging platforms whenever interesting things happen — a task grabs a release, a download finishes, a task fails, or a release gets removed from your client. No more F5'ing NZBGet to see whether Scream 7 landed.
 
-Notifications are configured from **Settings → Notifications** and run fire-and-forget: a broken webhook will **never** crash a task run or the download poller. Delivery failures are logged to each provider's row so you can see what's wrong without digging through server logs.
+Notifications are configured from **Notifications** (in the Settings sidebar) and run fire-and-forget: a broken webhook will **never** crash a task run or the download poller. Delivery failures are logged to each provider's row so you can see what's wrong without digging through server logs.
 
 ## Supported providers
 
@@ -76,6 +76,7 @@ You can pick POST or PUT, and add custom headers via the backend API if needed.
 | Event | When it fires |
 |---|---|
 | `task.grabbed` | A task successfully handed a release to a client. Includes task name, client name, size. |
+| `task.upgraded` | A quality upgrade replaced a previously-grabbed release with a better one. Includes old/new title, quality tier change, and score change. Only fires when `enable_upgrades: true` is set on the task. |
 | `task.send_failed` | A task found a match that passed all filters but every configured client refused it (protocol mismatch, auth failure, etc.). |
 | `task.error` | A task crashed with an unhandled exception. |
 | `download.started` | State transitioned from `queued` → `downloading` on the client. Includes display title and size. |

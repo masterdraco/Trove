@@ -87,6 +87,10 @@ All filters are optional and combine as AND. An item must pass every defined fil
 | `require_title` | string | Strict show/movie name match. The hit's normalized title prefix (everything up to the SxxExx for series, or up to the year for movies) must equal the normalized filter value. Embedded years are stripped, so "The.Boys.2019.S01E01" and "The.Boys.S01E01" both match `require_title: "The Boys"`. Rejects spinoffs like "The Boys Presents Diabolical" and false positives like Fringe episodes whose episode title contains "The Boy". |
 | `require_episode` | bool | Drop releases that don't carry an explicit SxxExx marker. Filters out season packs ("The.Boys.Season.4"), bundles ("The.Boys.S01.Complete"), and the weird `(The Boys S03 E05 T&M E08)` multi-episode formats. Set automatically by watchlist-promoted series tasks. |
 | `prefer_quality` | string | Soft ranking boost (not a hard filter). The release whose title contains this token wins the rank tie-break — if "2160p" releases exist, they're picked first; if not, the engine still grabs the best lower-quality match. |
+| `quality_profile` | string | Name of a quality profile (from Settings → Quality Profiles) to use for ranking. Overrides the hardcoded defaults. Profile reject tokens are merged with the task's `reject` list. |
+| `enable_upgrades` | bool | When true, already-grabbed releases can be replaced with higher-quality versions. See [Quality Profiles](/docs/11-quality-profiles) for details. |
+| `upgrade_until_tier` | int | Stop upgrading once the grabbed release reaches this quality tier (4=2160p, 3=1080p, 2=720p, 1=SD). |
+| `max_upgrades_per_run` | int | Maximum number of upgrade replacements per task run (default 3). Safety throttle. |
 
 ### Outputs
 
