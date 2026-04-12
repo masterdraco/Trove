@@ -25,8 +25,25 @@
     Calendar,
     Bell,
     Award,
-    Archive
+    Archive,
+    Rocket,
+    ExternalLink,
+    X
   } from "lucide-svelte";
+
+  type VersionInfo = {
+    current: string;
+    latest: string | null;
+    update_available: boolean;
+    source: string | null;
+    release_notes: string | null;
+    release_url: string | null;
+    checked_at: number;
+    error: string | null;
+  };
+
+  let updateInfo = $state<VersionInfo | null>(null);
+  let updateDismissed = $state(false);
 
   type NavChild = {
     href: string;
@@ -134,6 +151,10 @@
             }
           } catch {}
         }
+        // Check for updates (non-blocking)
+        api.system.version().then((v) => {
+          if (v.update_available) updateInfo = v;
+        }).catch(() => {});
       } catch (err) {
         const e = err as ApiError;
         if (e?.status === 401 && !publicRoutes.includes($page.url.pathname)) {
@@ -288,6 +309,52 @@
           />
         </a>
       </div>
+      {#if updateInfo && !updateDismissed}
+        <div class="border-b border-primary/30 bg-gradient-to-r from-primary/10 via-primary-2/10 to-primary/10 px-6 py-3">
+          <div class="mx-auto flex max-w-[1400px] items-start gap-3">
+            <Rocket class="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 text-sm font-semibold">
+                Trove v{updateInfo.latest} is available
+                <span class="text-xs font-normal text-muted-foreground">(you're on v{updateInfo.current})</span>
+              </div>
+              {#if updateInfo.release_notes}
+                {@const lines = updateInfo.release_notes.split("\n").filter((l) => l.startsWith("### ") || l.startsWith("- ")).slice(0, 8)}
+                <div class="mt-1.5 space-y-0.5 text-xs text-foreground/70">
+                  {#each lines as line}
+                    {#if line.startsWith("### ")}
+                      <div class="mt-1 font-semibold text-foreground/90">{line.replace("### ", "")}</div>
+                    {:else}
+                      <div>{line}</div>
+                    {/if}
+                  {/each}
+                </div>
+              {/if}
+              <div class="mt-2 flex items-center gap-2">
+                <a href="/settings" class="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                  <Rocket class="h-3 w-3" /> Update now
+                </a>
+                {#if updateInfo.release_url}
+                  <a
+                    href={updateInfo.release_url}
+                    target="_blank"
+                    rel="noopener"
+                    class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1 text-xs hover:bg-muted"
+                  >
+                    <ExternalLink class="h-3 w-3" /> Full changelog
+                  </a>
+                {/if}
+              </div>
+            </div>
+            <button
+              class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              onclick={() => (updateDismissed = true)}
+            >
+              <X class="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      {/if}
       <div class="mx-auto max-w-[1400px] px-8 py-8 animate-fade-in">
         {@render children()}
       </div>
