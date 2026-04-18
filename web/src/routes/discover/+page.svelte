@@ -270,6 +270,14 @@
                 <div class="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium uppercase text-white backdrop-blur-sm">
                   {item.kind}
                 </div>
+                {#if item.in_library}
+                  <div
+                    class="absolute bottom-2 right-2 rounded-full bg-emerald-500/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow backdrop-blur-sm"
+                    title="Already in your Plex library"
+                  >
+                    ✓ Plex
+                  </div>
+                {/if}
               </div>
               <div class="p-3">
                 <div class="truncate text-sm font-semibold">{item.title}</div>
@@ -359,6 +367,14 @@
             {/if}
             {#if item.release_date}
               <span class="text-muted-foreground">{item.release_date}</span>
+            {/if}
+            {#if item.in_library}
+              <span
+                class="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-semibold text-emerald-600 dark:text-emerald-400"
+                title="Already in your Plex library"
+              >
+                ✓ In Plex
+              </span>
             {/if}
           </div>
           {#if item.genres.length > 0}

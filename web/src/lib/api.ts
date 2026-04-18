@@ -245,6 +245,7 @@ export type DiscoverItem = {
   genres: string[];
   release_date: string | null;
   popularity: number | null;
+  in_library: boolean;
 };
 
 export type WatchlistItem = {
