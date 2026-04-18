@@ -116,6 +116,30 @@ REGISTRY: dict[str, SettingSpec] = {
         ),
         group="tmdb",
     ),
+    "release_groups.trusted": SettingSpec(
+        key="release_groups.trusted",
+        type="str",
+        default="",
+        label="Trusted release groups",
+        description=(
+            "Comma-separated list of release groups you prefer. Matching hits "
+            "in search and browse are highlighted in primary colour. Case "
+            "insensitive. Example: FitGirl, DODI, RARBG, SubsPlease"
+        ),
+        group="preferences",
+    ),
+    "release_groups.blocked": SettingSpec(
+        key="release_groups.blocked",
+        type="str",
+        default="",
+        label="Blocked release groups",
+        description=(
+            "Comma-separated list of release groups you never want to see. "
+            "Matching hits are hidden by default; toggle \"show blocked\" in "
+            "the search UI to reveal them. Case insensitive."
+        ),
+        group="preferences",
+    ),
 }
 
 

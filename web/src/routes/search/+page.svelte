@@ -23,6 +23,12 @@
   let errors = $state<{ name: string; message: string }[]>([]);
   let clients = $state<DownloadClientOut[]>([]);
   let sendingId = $state<string | null>(null);
+  let showBlocked = $state(false);
+
+  const visibleHits = $derived(
+    showBlocked ? hits : hits.filter((h) => h.group_tier !== "blocked")
+  );
+  const blockedCount = $derived(hits.filter((h) => h.group_tier === "blocked").length);
 
   onMount(async () => {
     try {
@@ -218,8 +224,17 @@
   {/if}
 
   {#if hits.length > 0}
-    <div class="text-xs text-muted-foreground">
-      {hits.length} results in {elapsed}ms
+    <div class="flex items-center justify-between text-xs text-muted-foreground">
+      <span>{visibleHits.length} results in {elapsed}ms</span>
+      {#if blockedCount > 0}
+        <button
+          type="button"
+          onclick={() => (showBlocked = !showBlocked)}
+          class="rounded-md border border-border bg-background px-2 py-1 hover:bg-muted"
+        >
+          {showBlocked ? "Hide" : "Show"} {blockedCount} from blocked groups
+        </button>
+      {/if}
     </div>
     <div class="overflow-hidden rounded-xl border border-border bg-card">
       <table class="w-full text-sm">
@@ -234,12 +249,25 @@
           </tr>
         </thead>
         <tbody>
-          {#each hits as hit}
-            <tr class="border-t border-border">
+          {#each visibleHits as hit}
+            <tr class="border-t border-border {hit.group_tier === 'blocked' ? 'opacity-50' : ''}">
               <td class="max-w-xl px-4 py-3">
                 <div class="truncate font-medium">{hit.title}</div>
-                <div class="mt-0.5 text-xs text-muted-foreground">
-                  {hit.protocol} · {hit.category ?? "—"}
+                <div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>{hit.protocol} · {hit.category ?? "—"}</span>
+                  {#if hit.group}
+                    <span
+                      class="rounded px-1.5 py-0.5 text-[11px] font-medium {hit.group_tier ===
+                      'trusted'
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                        : hit.group_tier === 'blocked'
+                          ? 'bg-red-500/15 text-red-600 dark:text-red-400'
+                          : 'bg-muted'}"
+                      title={hit.group_tier ? `${hit.group_tier} group` : "release group"}
+                    >
+                      {hit.group}
+                    </span>
+                  {/if}
                 </div>
               </td>
               <td class="px-4 py-3 text-xs">{formatSize(hit.size)}</td>

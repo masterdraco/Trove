@@ -14,7 +14,8 @@ from trove.clients.base import Protocol, Release
 from trove.indexers.base import Category, IndexerError, SearchQuery
 from trove.models.feed import FeedRow, RssItemRow
 from trove.models.indexer import IndexerEventRow, IndexerRow
-from trove.services import indexer_registry
+from trove.services import app_settings, indexer_registry
+from trove.utils.release_parser import parse_release_group
 
 log = structlog.get_logger()
 
@@ -33,6 +34,8 @@ class SearchHit:
     score: float
     published_at: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    group: str | None = None  # parsed release group tag, e.g. "FitGirl"
+    group_tier: str | None = None  # "trusted" | "blocked" — set by API layer
 
 
 @dataclass(slots=True)
@@ -52,6 +55,25 @@ class SearchResponse:
 
 def _normalize_title(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+
+
+def _annotate_group_tiers(session: Session, hits: list[SearchHit]) -> None:
+    """Tag each hit with ``group_tier`` = "trusted" | "blocked" | None
+    based on user preferences stored in app_settings."""
+    trusted_raw = str(app_settings.get(session, "release_groups.trusted") or "")
+    blocked_raw = str(app_settings.get(session, "release_groups.blocked") or "")
+    trusted = {g.strip().lower() for g in trusted_raw.split(",") if g.strip()}
+    blocked = {g.strip().lower() for g in blocked_raw.split(",") if g.strip()}
+    if not trusted and not blocked:
+        return
+    for hit in hits:
+        if not hit.group:
+            continue
+        g = hit.group.lower()
+        if g in blocked:
+            hit.group_tier = "blocked"
+        elif g in trusted:
+            hit.group_tier = "trusted"
 
 
 def _hit_from_release(release: Release) -> SearchHit:
@@ -76,6 +98,7 @@ def _hit_from_release(release: Release) -> SearchHit:
         score=0.0,
         published_at=published if isinstance(published, str) else None,
         metadata=dict(meta),
+        group=parse_release_group(release.title),
     )
 
 
@@ -195,6 +218,7 @@ def _search_local_rss(
                 source=f"rss:{feed.name}",
                 score=0.0,
                 published_at=item.published_at.isoformat() if item.published_at else None,
+                group=parse_release_group(item.title),
             )
         )
     return hits
@@ -264,6 +288,8 @@ async def run_browse(
     hits = _dedupe(hits)
     # Newest first when published_at is known; empty string sorts last.
     hits.sort(key=lambda h: (h.published_at or "", h.score), reverse=True)
+
+    _annotate_group_tiers(session, hits)
 
     elapsed = int((time.monotonic() - start) * 1000)
     return SearchResponse(
@@ -398,6 +424,8 @@ async def run_search(
 
     hits = _dedupe(hits)
     hits.sort(key=lambda h: h.score, reverse=True)
+
+    _annotate_group_tiers(session, hits)
 
     elapsed = int((time.monotonic() - start) * 1000)
     return SearchResponse(

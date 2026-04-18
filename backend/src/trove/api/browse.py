@@ -127,6 +127,8 @@ async def latest(
                 source=h.source,
                 score=h.score,
                 published_at=h.published_at,
+                group=h.group,
+                group_tier=h.group_tier,
             )
             for h in result.hits
         ],

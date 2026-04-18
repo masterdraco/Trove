@@ -35,6 +35,8 @@ class SearchHitOut(BaseModel):
     source: str | None
     score: float
     published_at: str | None = None
+    group: str | None = None
+    group_tier: str | None = None
 
 
 class SearchErrorOut(BaseModel):
@@ -79,6 +81,8 @@ async def search(
             source=h.source,
             score=h.score,
             published_at=h.published_at,
+            group=h.group,
+            group_tier=h.group_tier,
         )
         for h in result.hits
     ]

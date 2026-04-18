@@ -220,6 +220,8 @@ export type SearchHit = {
   source: string | null;
   score: number;
   published_at: string | null;
+  group: string | null;
+  group_tier: "trusted" | "blocked" | null;
 };
 
 export type SearchResponse = {
