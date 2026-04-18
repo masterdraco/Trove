@@ -5,10 +5,12 @@ from __future__ import annotations
 import base64
 import os
 import re
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import httpx
 import structlog
@@ -30,6 +32,9 @@ GITHUB_API = "https://api.github.com"
 PYPROJECT_VERSION_RE = re.compile(r'^\s*version\s*=\s*"([^"]+)"', re.MULTILINE)
 
 
+Environment = Literal["docker", "source", "unknown"]
+
+
 class UpdateCheck(BaseModel):
     current: str
     latest: str | None
@@ -39,6 +44,14 @@ class UpdateCheck(BaseModel):
     release_url: str | None
     checked_at: float
     error: str | None = None
+    environment: Environment = "unknown"
+    # True when POST /api/system/update is expected to succeed. False when
+    # we detect a missing prerequisite (e.g. docker mode without socket
+    # mounted) so the UI can explain what to do instead of offering a
+    # button that fails.
+    update_ready: bool = False
+    # Human-readable reason when update_ready is False.
+    update_blocker: str | None = None
 
 
 @dataclass
@@ -49,6 +62,85 @@ class _CacheEntry:
 
 _CACHE: _CacheEntry | None = None
 _CACHE_TTL = 30 * 60  # 30 minutes
+
+_ENVIRONMENT: Environment | None = None
+
+
+def _find_repo_root() -> Path | None:
+    """Walk upward from this file until we find .git or scripts/update.sh."""
+    here = Path(__file__).resolve()
+    for parent in [here, *here.parents]:
+        script = parent / "scripts" / "update.sh"
+        if script.is_file():
+            return parent
+    return None
+
+
+def _running_in_container() -> bool:
+    """Heuristic: are we inside a Docker/OCI container? Cheap syscalls only."""
+    if Path("/.dockerenv").exists():
+        return True
+    try:
+        cgroup = Path("/proc/1/cgroup").read_text()
+    except OSError:
+        return False
+    return any(marker in cgroup for marker in ("docker", "containerd", "kubepods", "podman"))
+
+
+def _detect_environment() -> Environment:
+    """Decide whether self-update is possible.
+
+    ``source``  running from a host checkout we can git-pull —
+                scripts/update.sh is reachable AND we're not in a container.
+    ``docker``  running inside a container (scripts/ is copied in by the
+                image build); update runs via docker socket + helper.
+    ``unknown`` neither — probably pip-installed into a venv.
+    """
+    global _ENVIRONMENT
+    if _ENVIRONMENT is not None:
+        return _ENVIRONMENT
+    in_container = _running_in_container()
+    has_script = _find_repo_root() is not None
+    if in_container and has_script:
+        _ENVIRONMENT = "docker"
+    elif has_script:
+        _ENVIRONMENT = "source"
+    else:
+        _ENVIRONMENT = "unknown"
+    return _ENVIRONMENT
+
+
+def _update_readiness() -> tuple[bool, str | None]:
+    """Return (ready, blocker) for POST /update in the current environment.
+
+    Source mode is ready when scripts/update.sh is executable.
+    Docker mode is ready when the daemon socket is mounted AND the docker
+    CLI is present in PATH — both are needed for the helper-container
+    hand-off to work. Unknown mode is never ready.
+    """
+    env = _detect_environment()
+    if env == "source":
+        root = _find_repo_root()
+        if root is None or not os.access(root / "scripts" / "update.sh", os.X_OK):
+            return False, "scripts/update.sh is missing or not executable"
+        return True, None
+    if env == "docker":
+        if not Path("/var/run/docker.sock").exists():
+            return False, (
+                "Docker socket is not mounted. Add "
+                "'- /var/run/docker.sock:/var/run/docker.sock' to the trove "
+                "service volumes in docker-compose.yml and restart."
+            )
+        if shutil.which("docker") is None:
+            return False, (
+                "docker CLI is missing from the image — rebuild with the "
+                "v0.10.1+ Dockerfile so the CLI is copied in."
+            )
+        return True, None
+    return False, (
+        "Self-update is only available when Trove runs from a git checkout "
+        "or a compose-managed container. Upgrade via your package manager."
+    )
 
 
 def _parse_version(raw: str) -> tuple[int, ...]:
@@ -108,6 +200,8 @@ async def _run_check() -> UpdateCheck:
     when you want release notes shown inline.
     """
     now = time.time()
+    env = _detect_environment()
+    ready, blocker = _update_readiness()
     release_data: dict | None = None
     release_version: str | None = None
     pyproject_version: str | None = None
@@ -130,6 +224,9 @@ async def _run_check() -> UpdateCheck:
             release_url=None,
             checked_at=now,
             error=f"http error: {e}",
+            environment=env,
+            update_ready=ready,
+            update_blocker=blocker,
         )
 
     # Neither resolver returned anything — repo is probably private or
@@ -147,6 +244,9 @@ async def _run_check() -> UpdateCheck:
                 "Could not reach GitHub — repo may be private or rate-limited. "
                 "Make sure masterdraco/Trove is public."
             ),
+            environment=env,
+            update_ready=ready,
+            update_blocker=blocker,
         )
 
     # Pick the higher of the two, preferring release when equal because
@@ -168,6 +268,9 @@ async def _run_check() -> UpdateCheck:
         release_url=(winning_release or {}).get("html_url")
         or f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}",
         checked_at=now,
+        environment=env,
+        update_ready=ready,
+        update_blocker=blocker,
     )
 
 
@@ -218,40 +321,31 @@ class UpdateTriggerResponse(BaseModel):
     pid: int | None
 
 
-def _find_repo_root() -> Path | None:
-    """Walk upward from this file until we find .git or scripts/update.sh."""
-    here = Path(__file__).resolve()
-    for parent in [here, *here.parents]:
-        script = parent / "scripts" / "update.sh"
-        if script.is_file():
-            return parent
-    return None
-
-
 @router.post("/update", response_model=UpdateTriggerResponse)
 async def trigger_update(_user: User = Depends(current_user)) -> UpdateTriggerResponse:
-    """Spawn the update script in a detached subprocess.
+    """Spawn scripts/update.sh detached; it decides source vs docker mode.
 
-    The script:
-      1. git fetch + git reset --hard origin/main
-      2. uv pip install -e . (backend)
-      3. alembic upgrade head
-      4. pnpm install + pnpm build (web)
-      5. copy web build into backend/src/trove/static
-      6. kill the current uvicorn gracefully
-      7. start a new uvicorn via setsid + nohup with the same env
+    In source mode the script does:
+      git pull → uv pip install → alembic → pnpm build → restart uvicorn
 
-    The subprocess is detached via start_new_session=True so killing
-    the current uvicorn in step 6 doesn't kill the update process too.
+    In docker mode the script launches a short-lived helper container
+    (via the mounted docker socket) that runs
+      docker compose pull trove && docker compose up -d trove
+    on behalf of the host, so the update survives even when this
+    container is replaced.
 
-    Environment variables (TROVE_*) are inherited from the current
-    process so the new uvicorn gets the same config.
-
-    Returns immediately after spawning — the frontend should poll
-    /api/health until the version changes to detect completion.
+    Returns immediately after spawning — the frontend polls /api/health
+    until the reported version changes to detect completion.
     """
+    ready, blocker = _update_readiness()
+    if not ready:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=blocker or "Self-update is not available in this environment.",
+        )
+
     repo_root = _find_repo_root()
-    if repo_root is None:
+    if repo_root is None:  # pragma: no cover — _update_readiness guarantees this
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="scripts/update.sh not found — are we running from source?",

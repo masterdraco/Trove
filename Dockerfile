@@ -27,6 +27,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
     && rm -rf /var/lib/apt/lists/*
 
+# Docker CLI (no daemon) lifted from the official image, so the
+# self-update flow can drive 'docker compose pull + up -d' via the
+# host socket mounted at /var/run/docker.sock. Not required for normal
+# operation — safe to remove in security-sensitive deployments.
+COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+
 # Install uv
 RUN pip install --no-cache-dir uv
 
@@ -38,6 +44,11 @@ WORKDIR /app
 COPY README.md ./README.md
 COPY backend/ ./backend/
 RUN cd backend && uv pip install --system -e .
+
+# The self-update flow looks for scripts/update.sh by walking up from
+# __file__; shipping the scripts next to the backend makes it reachable.
+COPY scripts/ ./scripts/
+RUN chmod +x /app/scripts/*.sh
 
 # Copy built web assets into the Python package's static dir
 COPY --from=web-builder /web/build /app/backend/src/trove/static

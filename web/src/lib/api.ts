@@ -606,6 +606,9 @@ export const api = {
         release_url: string | null;
         checked_at: number;
         error: string | null;
+        environment: "docker" | "source" | "unknown";
+        update_ready: boolean;
+        update_blocker: string | null;
       }>(`/api/system/version${force ? "?force=true" : ""}`),
     update: () =>
       request<{ ok: boolean; message: string; log_path: string; pid: number | null }>(

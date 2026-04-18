@@ -1,7 +1,12 @@
 services:
   trove:
-    build: .
-    image: trove:latest
+    # Default to the published image on GHCR. Tags are pushed on every
+    # release (v0.10.1+). Pin to a specific tag for reproducible deploys:
+    #   image: ghcr.io/masterdraco/trove:v0.10.1
+    image: ghcr.io/masterdraco/trove:latest
+    # Uncomment to build from this checkout instead (useful for local
+    # development). 'docker compose build' tags as the image name above.
+    # build: .
     container_name: trove
     # Port 8000 is published on all host interfaces, so Trove is
     # reachable from any device on your LAN at http://<host-ip>:8000.
@@ -12,6 +17,13 @@ services:
     volumes:
       - ./config:/config
       - ./data:/data
+      # Self-update: mounting the docker socket lets Trove trigger
+      # 'docker compose pull + up -d' via a short-lived helper container.
+      # Comment this line out to disable the in-app Update button; you
+      # can still upgrade manually with 'docker compose pull && up -d'.
+      # Grants root-equivalent access to the host — only safe for single-
+      # user deploys.
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=Europe/Copenhagen
       - TROVE_CONFIG_DIR=/config

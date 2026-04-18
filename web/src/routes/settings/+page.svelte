@@ -75,9 +75,12 @@
   let showApikey = $state(false);
 
   async function runUpdate() {
+    const mode = versionInfo?.environment === "docker"
+      ? "pull the new image and restart the container"
+      : "pull latest code, build the web UI and restart uvicorn";
     if (
       !confirm(
-        "Pull latest code from GitHub and restart Trove? The server will be unreachable for ~60–90 seconds while it rebuilds."
+        `Upgrade Trove? This will ${mode}. The server will be unreachable for roughly 60 seconds.`
       )
     )
       return;
@@ -96,7 +99,9 @@
       // moment the reported version differs from the starting one —
       // regardless of whether we observed the down-window (restart may
       // be faster than our poll interval).
-      updateStage = "Server is rebuilding — this takes 1–2 minutes…";
+      updateStage = versionInfo?.environment === "docker"
+        ? "Pulling new image and restarting container…"
+        : "Server is rebuilding — this takes 1–2 minutes…";
       const deadline = Date.now() + 300_000;
       let serverWentDown = false;
       while (Date.now() < deadline) {
@@ -490,7 +495,8 @@
               <button
                 class="btn-primary"
                 onclick={runUpdate}
-                disabled={updating}
+                disabled={updating || !versionInfo.update_ready}
+                title={versionInfo.update_ready ? undefined : (versionInfo.update_blocker ?? undefined)}
               >
                 {#if updating}
                   <Loader2 class="h-3.5 w-3.5 animate-spin" />
@@ -511,6 +517,20 @@
                 </a>
               {/if}
             </div>
+
+            {#if !versionInfo.update_ready && versionInfo.update_blocker}
+              <div class="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                <AlertTriangle class="inline h-3 w-3" />
+                Self-update isn't configured: {versionInfo.update_blocker}
+              </div>
+            {/if}
+
+            {#if versionInfo.environment && versionInfo.environment !== "unknown"}
+              <div class="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                Install type: {versionInfo.environment}
+                {#if versionInfo.update_ready}· self-update ready{/if}
+              </div>
+            {/if}
 
             {#if updating || updateStage}
               <div class="mt-3 rounded-xl border border-border/50 bg-background/60 px-3 py-2 text-xs">
