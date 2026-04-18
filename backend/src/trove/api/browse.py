@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 import httpx
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -12,16 +10,14 @@ from trove.api.search import SearchErrorOut, SearchHitOut
 from trove.clients.base import Protocol
 from trove.indexers.base import Category
 from trove.models.user import User
-from trove.services import search_service
+from trove.services import external_cache, search_service
 
 router = APIRouter()
 
-# Steam storesearch is unauthenticated and rate-limited by IP. We keep a
-# small in-process cache keyed by the normalized query so reopening the
-# games tab doesn't re-hit Steam for every row.
-_STEAM_CACHE_TTL = 3600.0
-_STEAM_CACHE_MAX = 500
-_steam_cache: dict[str, tuple[float, "SteamMatch | None"]] = {}
+# Steam storesearch is unauthenticated and rate-limited by IP. Responses
+# persist via external_cache (SQLite-backed) so they survive restarts.
+_STEAM_CACHE_TTL = 24 * 3600  # 1 day — Steam results are stable enough
+_STEAM_NS = "steam"
 
 
 class BrowseResponseOut(BaseModel):
@@ -84,14 +80,14 @@ async def latest(
 @router.get("/steam", response_model=SteamSearchOut)
 async def steam_search(
     q: str = Query(..., min_length=1, max_length=256),
+    session: Session = Depends(db_session),
     _user: User = Depends(current_user),
 ) -> SteamSearchOut:
     key = q.strip().lower()
-    now = time.time()
 
-    cached = _steam_cache.get(key)
-    if cached is not None and now - cached[0] < _STEAM_CACHE_TTL:
-        return SteamSearchOut(match=cached[1])
+    cached = external_cache.get(session, _STEAM_NS, key)
+    if cached is not external_cache.UNSET:
+        return SteamSearchOut(match=SteamMatch(**cached) if cached else None)
 
     match: SteamMatch | None = None
     try:
@@ -115,11 +111,14 @@ async def steam_search(
                         image=top.get("tiny_image") or None,
                     )
     except (httpx.HTTPError, ValueError):
-        match = None
+        # Don't cache transient network errors — retry on next hit.
+        return SteamSearchOut(match=None)
 
-    _steam_cache[key] = (now, match)
-    if len(_steam_cache) > _STEAM_CACHE_MAX:
-        for stale_key in [k for k, (ts, _) in _steam_cache.items() if now - ts > _STEAM_CACHE_TTL]:
-            _steam_cache.pop(stale_key, None)
-
+    external_cache.set(
+        session,
+        _STEAM_NS,
+        key,
+        match.model_dump() if match else None,
+        ttl_seconds=_STEAM_CACHE_TTL,
+    )
     return SteamSearchOut(match=match)

@@ -1,6 +1,7 @@
 from trove.models.ai_cache import AiCacheRow
 from trove.models.app_setting import AppSettingRow
 from trove.models.client import Client
+from trove.models.external_cache import ExternalCacheRow
 from trove.models.feed import FeedRow, RssItemRow
 from trove.models.indexer import IndexerRow
 from trove.models.task import SeenReleaseRow, TaskRow, TaskRunRow
@@ -11,6 +12,7 @@ __all__ = [
     "AiCacheRow",
     "AppSettingRow",
     "Client",
+    "ExternalCacheRow",
     "FeedRow",
     "IndexerRow",
     "RssItemRow",
