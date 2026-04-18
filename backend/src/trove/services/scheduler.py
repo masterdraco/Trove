@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from trove.db import get_engine
 from trove.models.feed import FeedRow
 from trove.models.task import TaskRow
-from trove.services import download_poller, feed_poller, task_engine
+from trove.services import alert_service, download_poller, feed_poller, task_engine
 
 log = structlog.get_logger()
 
@@ -162,6 +162,30 @@ def schedule_download_poller(interval_seconds: int = 60) -> None:
     log.info("scheduler.download_poller_scheduled", interval_s=interval_seconds)
 
 
+async def _execute_alert_sweep() -> None:
+    try:
+        stats = await alert_service.sweep_due_alerts()
+    except Exception as e:  # pragma: no cover
+        log.warning("scheduler.alert_sweep.failed", error=str(e))
+        return
+    if stats.get("checked", 0) > 0 or stats.get("new_matches", 0) > 0:
+        log.info("scheduler.alert_sweep", **stats)
+
+
+def schedule_alert_sweeper(interval_minutes: int = 5) -> None:
+    sched = get_scheduler()
+    job_id = "alert_sweeper"
+    if sched.get_job(job_id):
+        sched.remove_job(job_id)
+    sched.add_job(
+        _execute_alert_sweep,
+        trigger=IntervalTrigger(minutes=interval_minutes),
+        id=job_id,
+        replace_existing=True,
+    )
+    log.info("scheduler.alert_sweeper_scheduled", interval_m=interval_minutes)
+
+
 def start_scheduler() -> None:
     sched = get_scheduler()
     if not sched.running:
@@ -169,6 +193,7 @@ def start_scheduler() -> None:
     load_all_tasks()
     load_all_feeds()
     schedule_download_poller()
+    schedule_alert_sweeper()
 
 
 def stop_scheduler() -> None:

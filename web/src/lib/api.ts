@@ -545,6 +545,53 @@ export const api = {
     }
   },
 
+  alerts: {
+    list: () =>
+      request<
+        {
+          id: number;
+          name: string;
+          category: string;
+          keywords: string;
+          protocol: string | null;
+          enabled: boolean;
+          check_interval_minutes: number;
+          last_check_at: string | null;
+          created_at: string;
+        }[]
+      >("/api/alerts"),
+    create: (payload: {
+      name: string;
+      category: BrowseCategory;
+      keywords?: string;
+      protocol?: Protocol | null;
+      enabled?: boolean;
+      check_interval_minutes?: number;
+    }) =>
+      request<{ id: number }>("/api/alerts", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }),
+    update: (
+      id: number,
+      payload: {
+        name: string;
+        category: BrowseCategory;
+        keywords: string;
+        protocol: Protocol | null;
+        enabled: boolean;
+        check_interval_minutes: number;
+      }
+    ) =>
+      request<{ id: number }>(`/api/alerts/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      }),
+    remove: (id: number) => request<void>(`/api/alerts/${id}`, { method: "DELETE" }),
+    run: (id: number) =>
+      request<{ new_matches: number }>(`/api/alerts/${id}/run`, { method: "POST" })
+  },
+
   system: {
     version: (force = false) =>
       request<{

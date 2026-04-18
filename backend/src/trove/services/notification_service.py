@@ -47,6 +47,7 @@ EVENT_KINDS: tuple[str, ...] = (
     "download.completed",
     "download.failed",
     "download.removed",
+    "alert.new_match",
 )
 
 PROVIDER_TYPES: tuple[str, ...] = (
@@ -67,6 +68,7 @@ _COLORS = {
     "download.completed": 0x2ECC71,
     "download.failed": 0xE74C3C,
     "download.removed": 0xF39C12,
+    "alert.new_match": 0x1ABC9C,
 }
 
 

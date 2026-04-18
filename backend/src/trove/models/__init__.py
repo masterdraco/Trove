@@ -4,6 +4,7 @@ from trove.models.client import Client
 from trove.models.external_cache import ExternalCacheRow
 from trove.models.feed import FeedRow, RssItemRow
 from trove.models.indexer import IndexerRow
+from trove.models.saved_alert import SavedAlertRow
 from trove.models.task import SeenReleaseRow, TaskRow, TaskRunRow
 from trove.models.user import User
 from trove.models.watchlist import WatchlistItemRow
@@ -16,6 +17,7 @@ __all__ = [
     "FeedRow",
     "IndexerRow",
     "RssItemRow",
+    "SavedAlertRow",
     "SeenReleaseRow",
     "TaskRow",
     "TaskRunRow",

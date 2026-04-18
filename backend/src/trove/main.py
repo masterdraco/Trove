@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from trove import __version__
 from trove.api import ai as ai_router
+from trove.api import alerts as alerts_router
 from trove.api import app_settings as app_settings_router
 from trove.api import auth as auth_router
 from trove.api import backup as backup_router
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(indexers_router.router, prefix="/api/indexers", tags=["indexers"])
     app.include_router(search_router.router, prefix="/api/search", tags=["search"])
     app.include_router(browse_router.router, prefix="/api/browse", tags=["browse"])
+    app.include_router(alerts_router.router, prefix="/api/alerts", tags=["alerts"])
     app.include_router(tasks_router.router, prefix="/api/tasks", tags=["tasks"])
     app.include_router(ai_router.router, prefix="/api/ai", tags=["ai"])
     app.include_router(watchlist_router.router, prefix="/api/watchlist", tags=["watchlist"])

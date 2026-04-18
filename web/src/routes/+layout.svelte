@@ -66,6 +66,7 @@
     { href: "/discover", label: "Discover", icon: TrendingUp, color: "text-rose-400" },
     { href: "/search", label: "Search", icon: Search, color: "text-cyan-400" },
     { href: "/browse", label: "Browse", icon: Package, color: "text-orange-400" },
+    { href: "/alerts", label: "Alerts", icon: Bell, color: "text-yellow-400" },
     { href: "/tasks", label: "Tasks", icon: ListChecks, color: "text-violet-400" },
     { href: "/watchlist", label: "Watchlist", icon: Eye, color: "text-pink-400" },
     { href: "/calendar", label: "Calendar", icon: Calendar, color: "text-indigo-400" },
