@@ -74,7 +74,7 @@ def get(session: Session, namespace: str, key: str) -> Any | None | object:
         return json.loads(row.payload)
     except ValueError:  # pragma: no cover — corrupted row
         session.delete(row)
-        with _suppress_commit_error(session):
+        with _SuppressCommitError(session):
             session.commit()
         return _UNSET
 
@@ -115,7 +115,7 @@ def set(
                 expires_at=expires_at,
             )
         )
-    with _suppress_commit_error(session):
+    with _SuppressCommitError(session):
         session.commit()
 
 
@@ -137,7 +137,7 @@ def purge_expired(session: Session) -> int:
             ExternalCacheRow.expires_at <= now,
         )
     )
-    with _suppress_commit_error(session):
+    with _SuppressCommitError(session):
         session.commit()
     return count
 
@@ -145,7 +145,7 @@ def purge_expired(session: Session) -> int:
 UNSET = _UNSET
 
 
-class _suppress_commit_error:
+class _SuppressCommitError:
     def __init__(self, session: Session) -> None:
         self.session = session
 

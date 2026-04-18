@@ -19,7 +19,6 @@ minutes via external_cache to keep the watchlist list endpoint snappy.
 
 from __future__ import annotations
 
-import json
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 

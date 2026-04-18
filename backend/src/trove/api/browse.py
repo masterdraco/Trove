@@ -94,10 +94,11 @@ def _score_steam_candidate(query: str, candidate_name: str) -> float:
     ratio = SequenceMatcher(None, " ".join(q_tokens), " ".join(c_tokens)).ratio()
     all_match_bonus = 0.15 if q_set.issubset(c_set) else 0.0
 
-    if len(q_tokens) <= 2:
-        base = 0.4 * jaccard + 0.6 * ratio
-    else:
-        base = 0.65 * jaccard + 0.35 * ratio
+    base = (
+        0.4 * jaccard + 0.6 * ratio
+        if len(q_tokens) <= 2
+        else 0.65 * jaccard + 0.35 * ratio
+    )
     return min(1.0, base + all_match_bonus)
 
 
