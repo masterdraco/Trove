@@ -115,9 +115,7 @@ async def _has_by_tmdb(cfg: PlexConfig, kind: str, tmdb_id: int) -> bool:
     return False
 
 
-async def _has_by_title_year(
-    cfg: PlexConfig, kind: str, title: str, year: int | None
-) -> bool:
+async def _has_by_title_year(cfg: PlexConfig, kind: str, title: str, year: int | None) -> bool:
     tag_spec = _PLEX_SEARCH_TAGS.get(kind)
     if tag_spec is None:
         return False
@@ -189,6 +187,4 @@ async def movie_in_library(
 ) -> bool:
     """Backwards-compatible alias — kept so existing watchlist callers
     don't need to be updated."""
-    return await title_in_library(
-        session, kind="movie", tmdb_id=tmdb_id, title=title, year=year
-    )
+    return await title_in_library(session, kind="movie", tmdb_id=tmdb_id, title=title, year=year)

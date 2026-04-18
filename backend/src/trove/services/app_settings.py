@@ -135,7 +135,7 @@ REGISTRY: dict[str, SettingSpec] = {
         label="Blocked release groups",
         description=(
             "Comma-separated list of release groups you never want to see. "
-            "Matching hits are hidden by default; toggle \"show blocked\" in "
+            'Matching hits are hidden by default; toggle "show blocked" in '
             "the search UI to reveal them. Case insensitive."
         ),
         group="preferences",

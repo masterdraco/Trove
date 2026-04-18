@@ -106,7 +106,7 @@ async def check_alert(session: Session, alert: SavedAlertRow) -> int:
         event = notification_service.Event(
             kind="alert.new_match",
             title=f"New match: {hit.title[:120]}",
-            description=f"Alert \"{alert.name}\" matched a new release.",
+            description=f'Alert "{alert.name}" matched a new release.',
             fields=fields,
             link=hit.download_url,
         )

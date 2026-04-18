@@ -80,9 +80,7 @@ def handle_download_completed(session: Session, task_id: int) -> None:
 
     target_tier = _parse_quality_tier(item.target_quality)
     current_tier = completed.quality_tier
-    meets_target = target_tier is None or (
-        current_tier is not None and current_tier >= target_tier
-    )
+    meets_target = target_tier is None or (current_tier is not None and current_tier >= target_tier)
 
     changed = False
     if item.discovery_status != "downloaded":

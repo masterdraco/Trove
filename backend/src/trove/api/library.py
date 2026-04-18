@@ -47,7 +47,5 @@ async def library_check(
     session: Session = Depends(db_session),
     _user: User = Depends(current_user),
 ) -> InLibraryOut:
-    found = await plex_library.movie_in_library(
-        session, tmdb_id=tmdb_id, title=title, year=year
-    )
+    found = await plex_library.movie_in_library(session, tmdb_id=tmdb_id, title=title, year=year)
     return InLibraryOut(in_library=found)

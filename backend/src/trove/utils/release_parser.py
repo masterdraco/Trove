@@ -16,16 +16,42 @@ import re
 KNOWN_GROUPS: frozenset[str] = frozenset(
     {
         # Game releases
-        "fitgirl", "dodi", "razor1911", "codex", "flt", "plaza",
-        "gog", "skidrow", "reloaded", "ali213", "tinyiso",
-        "darksiders", "elamigos", "empress", "rune", "tenoke",
+        "fitgirl",
+        "dodi",
+        "razor1911",
+        "codex",
+        "flt",
+        "plaza",
+        "gog",
+        "skidrow",
+        "reloaded",
+        "ali213",
+        "tinyiso",
+        "darksiders",
+        "elamigos",
+        "empress",
+        "rune",
+        "tenoke",
         "razordox",
         # Movie/TV scene/P2P groups
-        "rarbg", "yts", "yify", "eztv", "ntb", "syncopy", "flux",
-        "cakes", "nosivid", "ethel", "ion10", "successfulcrab",
+        "rarbg",
+        "yts",
+        "yify",
+        "eztv",
+        "ntb",
+        "syncopy",
+        "flux",
+        "cakes",
+        "nosivid",
+        "ethel",
+        "ion10",
+        "successfulcrab",
         "rovers",
         # Anime
-        "subsplease", "erai-raws", "judas", "chotab",
+        "subsplease",
+        "erai-raws",
+        "judas",
+        "chotab",
     }
 )
 
