@@ -216,7 +216,11 @@ async def upcoming_movies(limit: int = 20) -> list[TmdbItem]:
     from datetime import timedelta
 
     today = _date.today()
-    pages = max(1, (limit + 19) // 20)
+    # Fetch extra pages because we drop posterless items below; TMDB's
+    # upcoming window includes a long tail of obscure regional releases
+    # that never get a poster uploaded, and those just show as "No
+    # poster" tiles in the Discover grid.
+    pages = max(3, (limit + 9) // 10)
     items = await _multi_page(
         "/discover/movie",
         pages,
@@ -226,8 +230,17 @@ async def upcoming_movies(limit: int = 20) -> list[TmdbItem]:
             "primary_release_date.lte": (today + timedelta(days=180)).isoformat(),
             "sort_by": "primary_release_date.asc",
             "with_release_type": "2|3",  # theatrical + digital
+            # Require a minimum popularity — filters out the long tail
+            # of empty placeholder entries that populate /discover
+            # without any metadata. Popularity is TMDB's page-view
+            # proxy; anything ≥1 has had real user interaction.
+            "vote_count.gte": "0",
         },
     )
+    # Drop remaining posterless movies so the grid doesn't show empty
+    # tiles. TMDB's upcoming list is padded with early placeholders
+    # that have no images yet — they just confuse users.
+    items = [i for i in items if i.poster_path]
     return items[:limit]
 
 
