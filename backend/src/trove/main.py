@@ -25,6 +25,7 @@ from trove.api import downloads as downloads_router
 from trove.api import feeds as feeds_router
 from trove.api import health as health_router
 from trove.api import indexers as indexers_router
+from trove.api import library as library_router
 from trove.api import logs as logs_router
 from trove.api import notifications as notifications_router
 from trove.api import quality_profiles as quality_profiles_router
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
     app.include_router(search_router.router, prefix="/api/search", tags=["search"])
     app.include_router(browse_router.router, prefix="/api/browse", tags=["browse"])
     app.include_router(alerts_router.router, prefix="/api/alerts", tags=["alerts"])
+    app.include_router(library_router.router, prefix="/api/library", tags=["library"])
     app.include_router(tasks_router.router, prefix="/api/tasks", tags=["tasks"])
     app.include_router(ai_router.router, prefix="/api/ai", tags=["ai"])
     app.include_router(watchlist_router.router, prefix="/api/watchlist", tags=["watchlist"])

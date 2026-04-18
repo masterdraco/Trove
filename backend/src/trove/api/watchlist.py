@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,7 +24,7 @@ from trove.models.client import Client
 from trove.models.task import SeenReleaseRow, TaskRow, TaskRunRow
 from trove.models.user import User
 from trove.models.watchlist import WatchlistItemRow
-from trove.services import client_registry, scheduler, search_service
+from trove.services import client_registry, plex_library, scheduler, search_service
 from trove.services.task_engine import score_hit
 
 router = APIRouter()
@@ -80,6 +81,8 @@ class WatchlistOut(BaseModel):
     download_count: int = 0
     last_download_title: str | None = None
     last_download_at: datetime | None = None
+    # Plex library presence (False when Plex not configured)
+    in_library: bool = False
 
 
 class PromoteResponse(BaseModel):
@@ -195,7 +198,26 @@ async def list_items(
     rows = session.exec(
         select(WatchlistItemRow).order_by(WatchlistItemRow.added_at.desc())  # type: ignore[attr-defined]
     ).all()
-    return [_to_out(r, session) for r in rows]
+    outs = [_to_out(r, session) for r in rows]
+
+    # Enrich movies with Plex library presence. If Plex isn't configured
+    # every lookup short-circuits to False in ~0ms so this is cheap.
+    movie_pairs = [(o, r) for o, r in zip(outs, rows, strict=True) if r.kind == "movie"]
+    if movie_pairs:
+        checks = await asyncio.gather(
+            *(
+                plex_library.movie_in_library(
+                    session, tmdb_id=r.tmdb_id, title=r.title, year=r.year
+                )
+                for _, r in movie_pairs
+            ),
+            return_exceptions=True,
+        )
+        for (out, _), found in zip(movie_pairs, checks, strict=True):
+            if isinstance(found, Exception):
+                continue
+            out.in_library = bool(found)
+    return outs
 
 
 @router.post("", response_model=WatchlistOut, status_code=status.HTTP_201_CREATED)

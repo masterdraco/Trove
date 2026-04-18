@@ -140,6 +140,30 @@ REGISTRY: dict[str, SettingSpec] = {
         ),
         group="preferences",
     ),
+    "plex.url": SettingSpec(
+        key="plex.url",
+        type="str",
+        default="",
+        label="Plex server URL",
+        description=(
+            "Base URL of your Plex Media Server, e.g. http://192.168.0.100:32400. "
+            "When set, watchlist items show whether they're already in your library "
+            "so you avoid re-downloading what you already own. Leave blank to disable."
+        ),
+        group="plex",
+    ),
+    "plex.token": SettingSpec(
+        key="plex.token",
+        type="str",
+        default="",
+        label="Plex X-Plex-Token",
+        description=(
+            "Auth token from your Plex account. Get it from "
+            "https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/ "
+            "— it's in the XML view of any file in your library."
+        ),
+        group="plex",
+    ),
 }
 
 

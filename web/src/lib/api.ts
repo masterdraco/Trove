@@ -268,6 +268,7 @@ export type WatchlistItem = {
   download_count: number;
   last_download_title: string | null;
   last_download_at: string | null;
+  in_library: boolean;
 };
 
 export type WatchlistCandidate = {

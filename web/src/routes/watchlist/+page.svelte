@@ -249,7 +249,15 @@
               <div class="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium uppercase text-white backdrop-blur-sm">
                 {item.kind}
               </div>
-              <div class="absolute bottom-2 left-2">
+              <div class="absolute bottom-2 left-2 flex items-center gap-1">
+                {#if item.in_library}
+                  <span
+                    class="rounded-full bg-emerald-500/90 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm"
+                    title="Already in your Plex library"
+                  >
+                    ✓ Plex
+                  </span>
+                {/if}
                 <span class={status.cls}>{status.text}</span>
               </div>
             </div>
