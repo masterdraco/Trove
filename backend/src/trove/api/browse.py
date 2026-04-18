@@ -13,7 +13,7 @@ from trove.api.search import SearchErrorOut, SearchHitOut
 from trove.clients.base import Protocol
 from trove.indexers.base import Category
 from trove.models.user import User
-from trove.services import external_cache, search_service
+from trove.services import external_cache, search_service, tmdb
 
 router = APIRouter()
 
@@ -21,6 +21,10 @@ router = APIRouter()
 # persist via external_cache (SQLite-backed) so they survive restarts.
 _STEAM_CACHE_TTL = 24 * 3600  # 1 day — Steam results are stable enough
 _STEAM_NS = "steam"
+
+_TMDB_CACHE_TTL = 6 * 3600  # 6 hours — ratings/popularity shift on TMDB
+_TMDB_NS = "tmdb"
+_TMDB_WEB_BASE = "https://www.themoviedb.org"
 
 
 class BrowseResponseOut(BaseModel):
@@ -41,6 +45,22 @@ class SteamMatch(BaseModel):
 
 class SteamSearchOut(BaseModel):
     match: SteamMatch | None
+
+
+class TmdbMatch(BaseModel):
+    tmdb_id: int
+    kind: str  # "movie" | "tv"
+    title: str
+    year: int | None
+    rating: float | None
+    poster_url: str | None
+    backdrop_url: str | None
+    url: str
+    confidence: float = 0.0
+
+
+class TmdbSearchOut(BaseModel):
+    match: TmdbMatch | None
 
 
 def _normalize_for_match(s: str) -> list[str]:
@@ -170,3 +190,64 @@ async def steam_search(
         ttl_seconds=_STEAM_CACHE_TTL,
     )
     return SteamSearchOut(match=match)
+
+
+@router.get("/tmdb", response_model=TmdbSearchOut)
+async def tmdb_search(
+    q: str = Query(..., min_length=1, max_length=256),
+    kind: str = Query("movie", pattern="^(movie|tv)$"),
+    year: int | None = Query(None, ge=1900, le=2099),
+    session: Session = Depends(db_session),
+    _user: User = Depends(current_user),
+) -> TmdbSearchOut:
+    key = f"{kind}:{q.strip().lower()}:{year or ''}"
+
+    cached = external_cache.get(session, _TMDB_NS, key)
+    if cached is not external_cache.UNSET:
+        return TmdbSearchOut(match=TmdbMatch(**cached) if cached else None)
+
+    match: TmdbMatch | None = None
+    try:
+        items = await tmdb.search(query=q, kind=kind)
+    except tmdb.TmdbError:
+        # Don't cache missing-token or transient errors.
+        return TmdbSearchOut(match=None)
+
+    # Filter to the requested kind (multi-search can leak across types).
+    items = [i for i in items if i.kind == kind]
+
+    best: TmdbMatch | None = None
+    for item in items[:8]:
+        confidence = _score_steam_candidate(q, item.title)
+        # Year bonus: the release name often carries the year — when it
+        # matches TMDB's release year the match is almost certainly right.
+        if year is not None and item.year == year:
+            confidence = min(1.0, confidence + 0.25)
+        elif year is not None and item.year is not None and abs(item.year - year) == 1:
+            # One-year slack: some releases use the production year and
+            # TMDB the release year, or vice versa.
+            confidence = min(1.0, confidence + 0.1)
+
+        candidate = TmdbMatch(
+            tmdb_id=item.tmdb_id,
+            kind=item.kind,
+            title=item.title,
+            year=item.year,
+            rating=item.rating,
+            poster_url=item.poster_url("w154"),
+            backdrop_url=item.backdrop_url("w780"),
+            url=f"{_TMDB_WEB_BASE}/{item.kind}/{item.tmdb_id}",
+            confidence=round(confidence, 3),
+        )
+        if best is None or candidate.confidence > best.confidence:
+            best = candidate
+    match = best
+
+    external_cache.set(
+        session,
+        _TMDB_NS,
+        key,
+        match.model_dump() if match else None,
+        ttl_seconds=_TMDB_CACHE_TTL,
+    )
+    return TmdbSearchOut(match=match)

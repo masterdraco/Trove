@@ -523,7 +523,24 @@ export const api = {
           image: string | null;
           confidence: number;
         } | null;
-      }>(`/api/browse/steam?q=${encodeURIComponent(q)}`)
+      }>(`/api/browse/steam?q=${encodeURIComponent(q)}`),
+    tmdb: (q: string, kind: "movie" | "tv", year?: number | null) => {
+      const params = new URLSearchParams({ q, kind });
+      if (year) params.set("year", String(year));
+      return request<{
+        match: {
+          tmdb_id: number;
+          kind: string;
+          title: string;
+          year: number | null;
+          rating: number | null;
+          poster_url: string | null;
+          backdrop_url: string | null;
+          url: string;
+          confidence: number;
+        } | null;
+      }>(`/api/browse/tmdb?${params}`);
+    }
   },
 
   system: {

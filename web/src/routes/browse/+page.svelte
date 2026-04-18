@@ -12,7 +12,10 @@
     Package,
     Gamepad2,
     RefreshCw,
-    ExternalLink
+    ExternalLink,
+    Film,
+    Tv,
+    Sparkles
   } from "lucide-svelte";
 
   type TabDef = {
@@ -29,17 +32,31 @@
     confidence: number;
   };
 
-  // Below this, the match is too weak to show as "this is probably it" —
-  // we fall back to a Steam search link instead of misleading the user.
+  type TmdbMatch = {
+    tmdb_id: number;
+    kind: string;
+    title: string;
+    year: number | null;
+    rating: number | null;
+    poster_url: string | null;
+    backdrop_url: string | null;
+    url: string;
+    confidence: number;
+  };
+
+  // Below this, the match is too weak to show as "this is probably it".
   const MIN_CONFIDENCE = 0.4;
   const STRONG_CONFIDENCE = 0.75;
 
   const tabs: TabDef[] = [
-    { key: "software", label: "Apps", icon: Package },
-    { key: "games", label: "Games", icon: Gamepad2 }
+    { key: "movies", label: "Movies", icon: Film },
+    { key: "tv", label: "TV", icon: Tv },
+    { key: "anime", label: "Anime", icon: Sparkles },
+    { key: "games", label: "Games", icon: Gamepad2 },
+    { key: "software", label: "Apps", icon: Package }
   ];
 
-  let active = $state<BrowseCategory>("software");
+  let active = $state<BrowseCategory>("movies");
   let loading = $state(false);
   let hits = $state<SearchHit[]>([]);
   let elapsed = $state(0);
@@ -48,9 +65,10 @@
   let clients = $state<DownloadClientOut[]>([]);
   let sendingId = $state<string | null>(null);
 
-  // Keyed by the cleaned title. Value is undefined while in-flight,
-  // null when Steam found nothing, or the match otherwise.
+  // Per-namespace enrichment stores. Keyed by the cleaned/parsed query.
+  // undefined = in-flight, null = provider had no match.
   let steamMatches = $state<Record<string, SteamMatch | null | undefined>>({});
+  let tmdbMatches = $state<Record<string, TmdbMatch | null | undefined>>({});
 
   onMount(async () => {
     try {
@@ -61,29 +79,65 @@
     await load(active);
   });
 
-  // Strip release-group tags, versions, build numbers, quality markers,
-  // bracketed noise, and turn dots/underscores into spaces. Good enough
-  // to turn "Baldurs.Gate.3.v4.1.1.Hotfix5-FitGirl" into "Baldurs Gate 3".
   const RELEASE_GROUPS =
-    /-(FitGirl|DODI|Razor1911|CODEX|FLT|PLAZA|GOG|SKIDROW|RELOADED|ALI213|TiNYiSO|DARKSiDERS|ElAmigos|Empress|RUNE|P2P|REPACK|PROPER|NSW|Switch|TENOKE|RazorDOX|DRMFREE|FCKDRM)(\b|[._-])/gi;
+    /-(FitGirl|DODI|Razor1911|CODEX|FLT|PLAZA|GOG|SKIDROW|RELOADED|ALI213|TiNYiSO|DARKSiDERS|ElAmigos|Empress|RUNE|P2P|REPACK|PROPER|NSW|Switch|TENOKE|RazorDOX|DRMFREE|FCKDRM|RARBG|YTS|YIFY|EZTV|NTb|SYNCOPY|FLUX|CAKES|NOSiViD|ETHEL|ION10|SubsPlease|Erai-raws)(\b|[._-])/gi;
   const NOISE_TAGS =
-    /\b(1080p|2160p|720p|x264|x265|HEVC|REPACK|PROPER|MULTi\d*|MULTI\d*|NSW|PKG|NSP|XCI|ISO|EXE|ZIP|RAR|7z|MacOSX|MacOS|Linux|WIN64|WIN32|x86|x64|amd64)\b/gi;
+    /\b(1080p|2160p|720p|480p|4K|UHD|x264|x265|HEVC|H264|H265|REPACK|PROPER|REMUX|BluRay|Blu-Ray|WEB-DL|WEBRip|WEB|HDTV|DVDRip|BDRip|HDRip|MULTi\d*|MULTI\d*|NSW|PKG|NSP|XCI|ISO|EXE|ZIP|RAR|7z|MacOSX|MacOS|Linux|WIN64|WIN32|x86|x64|amd64|AMZN|NF|HMAX|DSNP|HULU|ATVP|PMTP|DDP5?\.?1|DD5?\.?1|AAC2?\.?0|AAC5?\.?1|FLAC|Atmos|TrueHD|10bit|HDR|HDR10|DV|Dolby|EAC3|AC3)\b/gi;
 
-  function cleanTitle(title: string): string {
-    let s = title;
-    s = s.replace(RELEASE_GROUPS, " ");
-    s = s.replace(/\bv\d+(\.\d+)*[a-z0-9]*\b/gi, " ");
-    s = s.replace(/\bBuild[\s._-]*\d+\b/gi, " ");
-    s = s.replace(/\bUpdate[\s._-]*\d+\b/gi, " ");
-    s = s.replace(/\bHotfix\d*\b/gi, " ");
-    s = s.replace(/\[[^\]]*\]/g, " ");
-    s = s.replace(/\([^)]*\)/g, " ");
-    s = s.replace(/\{[^}]*\}/g, " ");
-    s = s.replace(NOISE_TAGS, " ");
-    s = s.replace(/[._]+/g, " ");
-    s = s.replace(/\s+/g, " ").trim();
-    s = s.replace(/[-\s]+$/, "").replace(/^[-\s]+/, "");
-    return s || title;
+  function stripNoise(s: string): string {
+    let out = s;
+    out = out.replace(RELEASE_GROUPS, " ");
+    out = out.replace(/\bv\d+(\.\d+)*[a-z0-9]*\b/gi, " ");
+    out = out.replace(/\bBuild[\s._-]*\d+\b/gi, " ");
+    out = out.replace(/\bUpdate[\s._-]*\d+\b/gi, " ");
+    out = out.replace(/\bHotfix\d*\b/gi, " ");
+    out = out.replace(/\[[^\]]*\]/g, " ");
+    out = out.replace(/\([^)]*\)/g, " ");
+    out = out.replace(/\{[^}]*\}/g, " ");
+    out = out.replace(NOISE_TAGS, " ");
+    out = out.replace(/[._]+/g, " ");
+    out = out.replace(/\s+/g, " ").trim();
+    out = out.replace(/[-\s]+$/, "").replace(/^[-\s]+/, "");
+    return out;
+  }
+
+  type Parsed = {
+    name: string;
+    year: number | null;
+    season: number | null;
+    episode: number | null;
+  };
+
+  // Extract the earliest "cut point" — the name portion ends before the
+  // first occurrence of a year, SxxExx, or a quality tag. Everything
+  // after that is release metadata we don't want in the search query.
+  function parseRelease(title: string): Parsed {
+    const yearMatch = title.match(/[\s._\-\(\[](19[7-9]\d|20[0-4]\d)[\s._\-\)\]]/);
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
+    const yearIdx = yearMatch
+      ? title.indexOf(yearMatch[0]) + 1 // skip the leading delimiter
+      : -1;
+
+    const sxxexx = title.match(/[\s._\-][Ss](\d{1,2})[Ee](\d{1,3})\b/);
+    const season = sxxexx ? parseInt(sxxexx[1], 10) : null;
+    const episode = sxxexx ? parseInt(sxxexx[2], 10) : null;
+    const sxxexxIdx = sxxexx ? title.indexOf(sxxexx[0]) : -1;
+
+    const quality = title.match(
+      /[\s._\-](1080p|2160p|720p|480p|4K|UHD|BluRay|Blu-Ray|WEB-DL|WEBRip|WEB|HDTV|DVDRip|BDRip|HDRip|REMUX)\b/i
+    );
+    const qualityIdx = quality ? title.indexOf(quality[0]) : -1;
+
+    const candidates = [yearIdx, sxxexxIdx, qualityIdx].filter((i) => i > 0);
+    const cut = candidates.length > 0 ? Math.min(...candidates) : title.length;
+
+    const namePart = title.substring(0, cut);
+    return {
+      name: stripNoise(namePart),
+      year,
+      season,
+      episode
+    };
   }
 
   async function load(cat: BrowseCategory) {
@@ -98,6 +152,8 @@
       errors = res.errors;
       if (cat === "games") {
         enrichWithSteam(hits);
+      } else if (cat === "movies" || cat === "tv" || cat === "anime") {
+        enrichWithTmdb(hits, cat);
       }
     } catch (e) {
       hits = [];
@@ -112,13 +168,9 @@
   async function enrichWithSteam(list: SearchHit[]) {
     const todo = new Set<string>();
     for (const h of list) {
-      const cleaned = cleanTitle(h.title);
-      if (cleaned && !(cleaned in steamMatches)) {
-        todo.add(cleaned);
-      }
+      const { name } = parseRelease(h.title);
+      if (name && !(name in steamMatches)) todo.add(name);
     }
-    // Kick off lookups in parallel. Each result is merged into the store
-    // as it resolves so rows update progressively instead of all-at-once.
     await Promise.all(
       Array.from(todo).map(async (name) => {
         steamMatches = { ...steamMatches, [name]: undefined };
@@ -130,6 +182,34 @@
         }
       })
     );
+  }
+
+  async function enrichWithTmdb(list: SearchHit[], cat: BrowseCategory) {
+    const kind: "movie" | "tv" = cat === "movies" ? "movie" : "tv";
+    const todo = new Map<string, { name: string; year: number | null }>();
+    for (const h of list) {
+      const parsed = parseRelease(h.title);
+      if (!parsed.name) continue;
+      const key = tmdbKey(parsed.name, kind, parsed.year);
+      if (!(key in tmdbMatches)) {
+        todo.set(key, { name: parsed.name, year: parsed.year });
+      }
+    }
+    await Promise.all(
+      Array.from(todo.entries()).map(async ([key, { name, year }]) => {
+        tmdbMatches = { ...tmdbMatches, [key]: undefined };
+        try {
+          const res = await api.browse.tmdb(name, kind, year);
+          tmdbMatches = { ...tmdbMatches, [key]: res.match };
+        } catch {
+          tmdbMatches = { ...tmdbMatches, [key]: null };
+        }
+      })
+    );
+  }
+
+  function tmdbKey(name: string, kind: "movie" | "tv", year: number | null): string {
+    return `${kind}::${name.toLowerCase()}::${year ?? ""}`;
   }
 
   function compatibleClients(hit: SearchHit): DownloadClientOut[] {
@@ -179,6 +259,10 @@
   function steamSearchUrl(q: string): string {
     return `https://store.steampowered.com/search/?term=${encodeURIComponent(q)}`;
   }
+
+  function tmdbSearchUrl(q: string, kind: "movie" | "tv"): string {
+    return `https://www.themoviedb.org/search/${kind}?query=${encodeURIComponent(q)}`;
+  }
 </script>
 
 <div class="space-y-6">
@@ -205,7 +289,7 @@
     </button>
   </div>
 
-  <div class="flex items-center gap-2 border-b border-border">
+  <div class="flex flex-wrap items-center gap-2 border-b border-border">
     {#each tabs as tab}
       {@const isActive = tab.key === active}
       {@const Icon = tab.icon}
@@ -256,61 +340,128 @@
         </thead>
         <tbody>
           {#each hits as hit}
-            {@const cleaned = cleanTitle(hit.title)}
-            {@const match = active === "games" ? steamMatches[cleaned] : undefined}
+            {@const parsed = parseRelease(hit.title)}
+            {@const steamMatch = active === "games" ? steamMatches[parsed.name] : undefined}
+            {@const tmdbKind = active === "movies" ? "movie" : active === "tv" || active === "anime" ? "tv" : null}
+            {@const tmdbMatch = tmdbKind
+              ? tmdbMatches[tmdbKey(parsed.name, tmdbKind, parsed.year)]
+              : undefined}
             <tr class="border-t border-border">
               <td class="max-w-xl px-4 py-3">
-                <div class="truncate font-medium">{hit.title}</div>
-                <div class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{hit.protocol} · {hit.category ?? "—"}</span>
-                  {#if active === "games"}
-                    {#if match === undefined}
-                      <span class="inline-flex items-center gap-1 text-muted-foreground/70">
-                        <Loader2 class="h-3 w-3 animate-spin" /> looking up…
-                      </span>
-                    {:else if match && match.confidence >= MIN_CONFIDENCE}
-                      {@const isStrong = match.confidence >= STRONG_CONFIDENCE}
-                      <a
-                        href={match.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] {isStrong
-                          ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/20'
-                          : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 dark:text-yellow-400'}"
-                        title={isStrong
-                          ? `Open on Steam (match ${Math.round(match.confidence * 100)}%)`
-                          : `Possible match (${Math.round(match.confidence * 100)}%) — verify`}
-                      >
-                        {#if match.image}
-                          <img src={match.image} alt="" class="h-3 w-auto rounded-sm" />
-                        {/if}
-                        {isStrong ? "Steam" : "Maybe"}: {match.name}
-                        <ExternalLink class="h-3 w-3" />
-                      </a>
-                    {:else}
-                      <a
-                        href={steamSearchUrl(cleaned)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
-                        title="Search on Steam"
-                      >
-                        Search Steam
-                        <ExternalLink class="h-3 w-3" />
-                      </a>
-                    {/if}
-                  {:else if active === "software"}
+                <div class="flex items-start gap-3">
+                  {#if tmdbKind && tmdbMatch && tmdbMatch.confidence >= MIN_CONFIDENCE && tmdbMatch.poster_url}
                     <a
-                      href={googleSearchUrl(cleaned)}
+                      href={tmdbMatch.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      class="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
-                      title="Search Google for this app"
+                      class="shrink-0"
+                      title="Open on TMDB"
                     >
-                      Search: {cleaned}
-                      <ExternalLink class="h-3 w-3" />
+                      <img
+                        src={tmdbMatch.poster_url}
+                        alt=""
+                        class="h-16 w-auto rounded border border-border"
+                        loading="lazy"
+                      />
                     </a>
                   {/if}
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate font-medium">{hit.title}</div>
+                    <div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{hit.protocol} · {hit.category ?? "—"}</span>
+
+                      {#if active === "games"}
+                        {#if steamMatch === undefined}
+                          <span class="inline-flex items-center gap-1 text-muted-foreground/70">
+                            <Loader2 class="h-3 w-3 animate-spin" /> looking up…
+                          </span>
+                        {:else if steamMatch && steamMatch.confidence >= MIN_CONFIDENCE}
+                          {@const isStrong = steamMatch.confidence >= STRONG_CONFIDENCE}
+                          <a
+                            href={steamMatch.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] {isStrong
+                              ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/20'
+                              : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 dark:text-yellow-400'}"
+                            title={isStrong
+                              ? `Open on Steam (match ${Math.round(steamMatch.confidence * 100)}%)`
+                              : `Possible match (${Math.round(steamMatch.confidence * 100)}%) — verify`}
+                          >
+                            {#if steamMatch.image}
+                              <img src={steamMatch.image} alt="" class="h-3 w-auto rounded-sm" />
+                            {/if}
+                            {isStrong ? "Steam" : "Maybe"}: {steamMatch.name}
+                            <ExternalLink class="h-3 w-3" />
+                          </a>
+                        {:else}
+                          <a
+                            href={steamSearchUrl(parsed.name)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                            title="Search on Steam"
+                          >
+                            Search Steam
+                            <ExternalLink class="h-3 w-3" />
+                          </a>
+                        {/if}
+                      {:else if tmdbKind}
+                        {#if tmdbMatch === undefined}
+                          <span class="inline-flex items-center gap-1 text-muted-foreground/70">
+                            <Loader2 class="h-3 w-3 animate-spin" /> looking up…
+                          </span>
+                        {:else if tmdbMatch && tmdbMatch.confidence >= MIN_CONFIDENCE}
+                          {@const isStrong = tmdbMatch.confidence >= STRONG_CONFIDENCE}
+                          <a
+                            href={tmdbMatch.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] {isStrong
+                              ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/20'
+                              : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 dark:text-yellow-400'}"
+                            title={isStrong
+                              ? `Open on TMDB (match ${Math.round(tmdbMatch.confidence * 100)}%)`
+                              : `Possible match (${Math.round(tmdbMatch.confidence * 100)}%) — verify`}
+                          >
+                            {isStrong ? "TMDB" : "Maybe"}: {tmdbMatch.title}{#if tmdbMatch.year} ({tmdbMatch.year}){/if}
+                            {#if tmdbMatch.rating !== null}
+                              <span class="opacity-80">★ {tmdbMatch.rating.toFixed(1)}</span>
+                            {/if}
+                            <ExternalLink class="h-3 w-3" />
+                          </a>
+                        {:else}
+                          <a
+                            href={tmdbSearchUrl(parsed.name, tmdbKind)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                            title="Search on TMDB"
+                          >
+                            Search TMDB
+                            <ExternalLink class="h-3 w-3" />
+                          </a>
+                        {/if}
+
+                        {#if parsed.season !== null && parsed.episode !== null}
+                          <span class="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                            S{String(parsed.season).padStart(2, "0")}E{String(parsed.episode).padStart(2, "0")}
+                          </span>
+                        {/if}
+                      {:else if active === "software"}
+                        <a
+                          href={googleSearchUrl(parsed.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                          title="Search Google for this app"
+                        >
+                          Search: {parsed.name}
+                          <ExternalLink class="h-3 w-3" />
+                        </a>
+                      {/if}
+                    </div>
+                  </div>
                 </div>
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
