@@ -29,6 +29,10 @@
     Rocket,
     ExternalLink,
     Package,
+    Compass,
+    Zap,
+    Activity,
+    Sliders,
     X
   } from "lucide-svelte";
 
@@ -63,24 +67,48 @@
 
   const nav: NavItem[] = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400" },
-    { href: "/discover", label: "Discover", icon: TrendingUp, color: "text-rose-400" },
-    { href: "/search", label: "Search", icon: Search, color: "text-cyan-400" },
-    { href: "/browse", label: "Browse", icon: Package, color: "text-orange-400" },
-    { href: "/alerts", label: "Alerts", icon: Bell, color: "text-yellow-400" },
-    { href: "/tasks", label: "Tasks", icon: ListChecks, color: "text-violet-400" },
-    { href: "/watchlist", label: "Watchlist", icon: Eye, color: "text-pink-400" },
-    { href: "/calendar", label: "Calendar", icon: Calendar, color: "text-indigo-400" },
-    { href: "/ai", label: "AI", icon: Sparkles, color: "text-fuchsia-400" },
-    { href: "/downloads", label: "Downloads", icon: Download, color: "text-green-400" },
-    { href: "/history", label: "History", icon: History, color: "text-amber-400" },
-    { href: "/logs", label: "Logs", icon: ScrollText, color: "text-slate-400" },
-    { href: "/docs", label: "Docs", icon: BookOpen, color: "text-teal-400" },
+    {
+      href: "/discover",
+      label: "Discovery",
+      icon: Compass,
+      color: "text-rose-400",
+      children: [
+        { href: "/discover", label: "Discover", icon: TrendingUp, color: "text-rose-400" },
+        { href: "/browse", label: "Browse", icon: Package, color: "text-orange-400" },
+        { href: "/search", label: "Search", icon: Search, color: "text-cyan-400" },
+        { href: "/calendar", label: "Calendar", icon: Calendar, color: "text-indigo-400" }
+      ]
+    },
+    {
+      href: "/watchlist",
+      label: "Automation",
+      icon: Zap,
+      color: "text-violet-400",
+      children: [
+        { href: "/watchlist", label: "Watchlist", icon: Eye, color: "text-pink-400" },
+        { href: "/tasks", label: "Tasks", icon: ListChecks, color: "text-violet-400" },
+        { href: "/alerts", label: "Alerts", icon: Bell, color: "text-yellow-400" },
+        { href: "/ai", label: "AI", icon: Sparkles, color: "text-fuchsia-400" }
+      ]
+    },
+    {
+      href: "/downloads",
+      label: "Activity",
+      icon: Activity,
+      color: "text-green-400",
+      children: [
+        { href: "/downloads", label: "Downloads", icon: Download, color: "text-green-400" },
+        { href: "/history", label: "History", icon: History, color: "text-amber-400" },
+        { href: "/logs", label: "Logs", icon: ScrollText, color: "text-slate-400" }
+      ]
+    },
     {
       href: "/settings",
       label: "Settings",
       icon: Settings,
       color: "text-zinc-400",
       children: [
+        { href: "/settings", label: "Configuration", icon: Sliders, color: "text-zinc-400" },
         { href: "/clients", label: "Clients", icon: Download, color: "text-emerald-400" },
         { href: "/indexers", label: "Indexers", icon: Database, color: "text-blue-400" },
         { href: "/feeds", label: "Feeds", icon: Rss, color: "text-orange-400" },
@@ -89,6 +117,7 @@
         { href: "/backup", label: "Backup", icon: Archive, color: "text-amber-400" }
       ]
     },
+    { href: "/docs", label: "Docs", icon: BookOpen, color: "text-teal-400" },
     { href: "/about", label: "About", icon: Info, color: "text-amber-400" }
   ];
 
