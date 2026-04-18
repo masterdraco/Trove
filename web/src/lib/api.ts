@@ -56,6 +56,26 @@ export type IndexerType =
   | "custom";
 export type Category = "movies" | "tv" | "music" | "books" | "anime" | "other";
 
+export type BrowseCategory =
+  | "movies"
+  | "tv"
+  | "music"
+  | "books"
+  | "audiobooks"
+  | "comics"
+  | "anime"
+  | "games"
+  | "software"
+  | "other";
+
+export type BrowseResponse = {
+  category: BrowseCategory;
+  hits: SearchHit[];
+  indexers_used: number;
+  elapsed_ms: number;
+  errors: { name: string; message: string }[];
+};
+
 export type IndexerOut = {
   id: number;
   name: string;
@@ -485,6 +505,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+
+  browse: {
+    latest: (cat: BrowseCategory, opts?: { protocol?: Protocol; limit?: number }) => {
+      const params = new URLSearchParams({ cat });
+      if (opts?.protocol) params.set("protocol", opts.protocol);
+      if (opts?.limit) params.set("limit", String(opts.limit));
+      return request<BrowseResponse>(`/api/browse/latest?${params}`);
+    },
+    steam: (q: string) =>
+      request<{
+        match: {
+          appid: number;
+          name: string;
+          url: string;
+          image: string | null;
+        } | null;
+      }>(`/api/browse/steam?q=${encodeURIComponent(q)}`)
+  },
 
   system: {
     version: (force = false) =>

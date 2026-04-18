@@ -200,6 +200,81 @@ def _search_local_rss(
     return hits
 
 
+async def run_browse(
+    session: Session,
+    *,
+    category: Category,
+    protocol: Protocol | None = None,
+    limit: int = 50,
+    timeout_per_indexer: float = 15.0,
+) -> SearchResponse:
+    """Fetch the latest releases in a category from all enabled indexers.
+
+    Unlike ``run_search``, this sends an empty query so drivers return
+    recent items rather than filtered matches. Results are sorted by
+    published date (newest first) with score as a tiebreaker. Per-indexer
+    failures are surfaced in the response's errors list — some drivers
+    (older Newznab installs, certain Cardigann site definitions) reject
+    empty queries outright, which is expected.
+    """
+    start = time.monotonic()
+    rows = session.exec(
+        select(IndexerRow)
+        .where(IndexerRow.enabled == True)  # noqa: E712
+        .order_by(IndexerRow.priority)
+    ).all()
+
+    if protocol is not None:
+        rows = [r for r in rows if r.protocol == protocol.value]
+
+    async def _run_one(row: IndexerRow) -> tuple[str, list[Release] | Exception]:
+        try:
+            driver = indexer_registry.build_driver(row)
+        except IndexerError as e:
+            return row.name, e
+        try:
+            async with asyncio.timeout(timeout_per_indexer):
+                releases = await driver.search(
+                    SearchQuery(terms="", categories=[category], limit=limit)
+                )
+            return row.name, releases
+        except (IndexerError, TimeoutError, asyncio.TimeoutError) as e:  # noqa: UP041
+            return row.name, e
+        except Exception as e:  # pragma: no cover - defensive
+            log.warning("indexer.browse.unexpected", name=row.name, error=str(e))
+            return row.name, e
+        finally:
+            with contextlib.suppress(Exception):
+                await driver.close()
+
+    results = await asyncio.gather(*(_run_one(row) for row in rows))
+
+    hits: list[SearchHit] = []
+    errors: list[SearchError] = []
+    for name, outcome in results:
+        if isinstance(outcome, Exception):
+            errors.append(SearchError(name=name, message=str(outcome)))
+            continue
+        for release in outcome:
+            hits.append(_hit_from_release(release))
+
+    for hit in hits:
+        hit.score = _score(hit)
+
+    hits = _dedupe(hits)
+    # Newest first when published_at is known; empty string sorts last.
+    hits.sort(key=lambda h: (h.published_at or "", h.score), reverse=True)
+
+    elapsed = int((time.monotonic() - start) * 1000)
+    return SearchResponse(
+        query=f"latest:{category.value}",
+        hits=hits[:limit],
+        indexers_used=len(rows),
+        elapsed_ms=elapsed,
+        errors=errors,
+    )
+
+
 async def run_search(
     session: Session,
     query: str,

@@ -131,11 +131,23 @@ class RartrackerIndexer(Indexer):
                 f"from your browser devtools after logging in to the tracker "
                 f"and update the indexer credentials"
             )
+        if 300 <= resp.status_code < 400:
+            # follow_redirects=False — a 302 here almost always means the
+            # session cookie expired and the tracker redirected us to /login.
+            raise IndexerError(
+                f"{self.name}: redirected to {resp.headers.get('location', '?')} — "
+                f"session cookie likely expired, re-copy it from your browser"
+            )
         if resp.status_code >= 400:
             snippet = resp.text[:160].replace("\n", " ")
             raise IndexerError(
                 f"{self.name}: HTTP {resp.status_code} from {self.api_url}: {snippet}"
             )
+        # Some RarTracker installs return 200 + application/json with an
+        # empty body when a search has zero matches. Treat that as "no
+        # results" instead of crashing on the JSON parse.
+        if not resp.content or not resp.text.strip():
+            return []
         ctype = resp.headers.get("content-type", "").lower()
         if "json" not in ctype:
             snippet = resp.text[:160].replace("\n", " ")

@@ -188,9 +188,10 @@ class NewznabIndexer(Indexer):
 
         params: dict[str, Any] = {
             "t": t,
-            "q": query.terms,
             "limit": query.limit,
         }
+        if query.terms:
+            params["q"] = query.terms
         if query.season is not None:
             params["season"] = query.season
         if query.episode is not None:
