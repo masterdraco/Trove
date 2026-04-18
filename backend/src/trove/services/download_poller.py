@@ -25,7 +25,7 @@ from trove.clients.base import DownloadState, DownloadStatus
 from trove.db import get_engine
 from trove.models.client import Client
 from trove.models.task import SeenReleaseRow
-from trove.services import client_registry, notification_service
+from trove.services import client_registry, notification_service, watchlist_completion
 
 log = structlog.get_logger()
 
@@ -110,6 +110,14 @@ async def _dispatch_transition(
     else:
         return
     await notification_service.dispatch(session, event)
+
+    # Terminal success → update any linked watchlist item. We do this
+    # after dispatch so notification failures never block state updates.
+    if new_status == "completed":
+        try:
+            watchlist_completion.handle_download_completed(session, row.task_id)
+        except Exception as e:  # pragma: no cover - defensive
+            log.warning("watchlist_completion.failed", error=str(e), task_id=row.task_id)
 
 
 async def poll_once() -> dict[str, int]:
