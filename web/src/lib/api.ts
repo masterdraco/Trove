@@ -541,6 +541,7 @@ export const api = {
           backdrop_url: string | null;
           url: string;
           confidence: number;
+          in_library: boolean;
         } | null;
       }>(`/api/browse/tmdb?${params}`);
     }

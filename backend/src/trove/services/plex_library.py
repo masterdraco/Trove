@@ -93,56 +93,92 @@ async def test_connection(cfg: PlexConfig) -> list[PlexSection]:
     return sections
 
 
-async def has_movie_by_tmdb(cfg: PlexConfig, tmdb_id: int) -> bool:
-    """Check whether the Plex library contains a movie with tmdb://<id>."""
-    # /library/all matches items scraped with the TMDB agent. Plex exposes
-    # the GUID as an attribute like guid="plex://movie/123" plus a
-    # <Guid id="tmdb://12345"/> child when alternative GUIDs are present.
-    # Using guid=tmdb://X works when TMDB is the primary agent, otherwise
-    # we have to page through and inspect children.
+# Plex type IDs for the /library/all endpoint.
+_PLEX_TYPE = {"movie": "1", "tv": "2"}
+# Matching XML element tags returned by the /search endpoint.
+_PLEX_SEARCH_TAGS = {"movie": ("Video", "movie"), "tv": ("Directory", "show")}
+
+
+async def _has_by_tmdb(cfg: PlexConfig, kind: str, tmdb_id: int) -> bool:
+    type_id = _PLEX_TYPE.get(kind)
+    if type_id is None:
+        return False
     try:
         root = await _request_xml(
             cfg,
             "/library/all",
-            {
-                "type": "1",  # movie
-                "guid": f"tmdb://{tmdb_id}",
-            },
+            {"type": type_id, "guid": f"tmdb://{tmdb_id}"},
         )
         if int(root.get("size", "0")) > 0:
             return True
     except PlexError:
         pass
-
-    # Fallback: search across sections by title (callers should also pass
-    # the title separately for true fuzzy matches; this branch only
-    # returns True on an exact tmdb GUID so we don't false-positive by
-    # title alone here).
     return False
 
 
-async def has_movie_by_title_year(cfg: PlexConfig, title: str, year: int | None) -> bool:
-    """Fallback for libraries scraped without TMDB agent: title+year."""
+async def _has_by_title_year(
+    cfg: PlexConfig, kind: str, title: str, year: int | None
+) -> bool:
+    tag_spec = _PLEX_SEARCH_TAGS.get(kind)
+    if tag_spec is None:
+        return False
+    element_tag, type_attr = tag_spec
     try:
-        root = await _request_xml(
-            cfg,
-            "/search",
-            {"query": title},
-        )
+        root = await _request_xml(cfg, "/search", {"query": title})
     except PlexError:
         return False
-    for v in root.iter("Video"):
-        if v.get("type") != "movie":
+    for el in root.iter(element_tag):
+        if el.get("type") != type_attr:
             continue
         if year is None:
             return True
         try:
-            v_year = int(v.get("year", "0"))
+            el_year = int(el.get("year", "0"))
         except ValueError:
             continue
-        if abs(v_year - year) <= 1:
+        if abs(el_year - year) <= 1:
             return True
     return False
+
+
+async def title_in_library(
+    session: Session,
+    *,
+    kind: str,  # "movie" | "tv"
+    tmdb_id: int | None,
+    title: str | None,
+    year: int | None,
+) -> bool:
+    """Return True when Plex has the movie/show identified by ``tmdb_id``
+    (preferred) or ``title`` + ``year`` (fallback).
+
+    Result is cached for 5 min so one watchlist- or browse-render only
+    hits Plex once per unique title.
+    """
+    if kind not in _PLEX_TYPE:
+        return False
+
+    cfg = load_config(session)
+    if cfg is None:
+        return False
+
+    cache_key = f"{kind}|{tmdb_id or ''}|{(title or '').lower()}|{year or ''}"
+    cached = external_cache.get(session, _CACHE_NS, cache_key)
+    if cached is not external_cache.UNSET:
+        return bool(cached)
+
+    found = False
+    try:
+        if tmdb_id is not None:
+            found = await _has_by_tmdb(cfg, kind, tmdb_id)
+        if not found and title:
+            found = await _has_by_title_year(cfg, kind, title, year)
+    except PlexError as e:
+        log.warning("plex.library.lookup_failed", error=str(e))
+        return False
+
+    external_cache.set(session, _CACHE_NS, cache_key, found, ttl_seconds=_CACHE_TTL)
+    return found
 
 
 async def movie_in_library(
@@ -152,36 +188,8 @@ async def movie_in_library(
     title: str | None,
     year: int | None,
 ) -> bool:
-    """Public helper that picks the best available match strategy.
-
-    Result is cached for 5 min per (tmdb_id | title+year) so a single
-    watchlist-list call only hits Plex once per unique movie.
-    """
-    cfg = load_config(session)
-    if cfg is None:
-        return False
-
-    key_parts = [
-        str(tmdb_id or ""),
-        (title or "").lower(),
-        str(year or ""),
-    ]
-    cache_key = "|".join(key_parts)
-
-    cached = external_cache.get(session, _CACHE_NS, cache_key)
-    if cached is not external_cache.UNSET:
-        return bool(cached)
-
-    found = False
-    try:
-        if tmdb_id is not None:
-            found = await has_movie_by_tmdb(cfg, tmdb_id)
-        if not found and title:
-            found = await has_movie_by_title_year(cfg, title, year)
-    except PlexError as e:
-        log.warning("plex.library.lookup_failed", error=str(e))
-        # Don't cache transient errors
-        return False
-
-    external_cache.set(session, _CACHE_NS, cache_key, found, ttl_seconds=_CACHE_TTL)
-    return found
+    """Backwards-compatible alias — kept so existing watchlist callers
+    don't need to be updated."""
+    return await title_in_library(
+        session, kind="movie", tmdb_id=tmdb_id, title=title, year=year
+    )

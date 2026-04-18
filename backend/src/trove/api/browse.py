@@ -13,7 +13,7 @@ from trove.api.search import SearchErrorOut, SearchHitOut
 from trove.clients.base import Protocol
 from trove.indexers.base import Category
 from trove.models.user import User
-from trove.services import external_cache, search_service, tmdb
+from trove.services import external_cache, plex_library, search_service, tmdb
 
 router = APIRouter()
 
@@ -57,6 +57,9 @@ class TmdbMatch(BaseModel):
     backdrop_url: str | None
     url: str
     confidence: float = 0.0
+    # Populated fresh on every response (not cached with the TMDB
+    # match) because the Plex library changes over time.
+    in_library: bool = False
 
 
 class TmdbSearchOut(BaseModel):
@@ -206,7 +209,16 @@ async def tmdb_search(
 
     cached = external_cache.get(session, _TMDB_NS, key)
     if cached is not external_cache.UNSET:
-        return TmdbSearchOut(match=TmdbMatch(**cached) if cached else None)
+        match = TmdbMatch(**cached) if cached else None
+        if match is not None:
+            match.in_library = await plex_library.title_in_library(
+                session,
+                kind=match.kind,
+                tmdb_id=match.tmdb_id,
+                title=match.title,
+                year=match.year,
+            )
+        return TmdbSearchOut(match=match)
 
     match: TmdbMatch | None = None
     try:
@@ -245,11 +257,26 @@ async def tmdb_search(
             best = candidate
     match = best
 
+    # Cache the TMDB match itself, not the Plex-library flag — the
+    # library changes over time and has its own cache in
+    # plex_library.title_in_library.
+    to_cache = match.model_dump() if match else None
+    if to_cache is not None:
+        to_cache["in_library"] = False
     external_cache.set(
         session,
         _TMDB_NS,
         key,
-        match.model_dump() if match else None,
+        to_cache,
         ttl_seconds=_TMDB_CACHE_TTL,
     )
+
+    if match is not None:
+        match.in_library = await plex_library.title_in_library(
+            session,
+            kind=match.kind,
+            tmdb_id=match.tmdb_id,
+            title=match.title,
+            year=match.year,
+        )
     return TmdbSearchOut(match=match)

@@ -42,6 +42,7 @@
     backdrop_url: string | null;
     url: string;
     confidence: number;
+    in_library: boolean;
   };
 
   // Below this, the match is too weak to show as "this is probably it".
@@ -371,8 +372,10 @@
                       href={tmdbMatch.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      class="shrink-0"
-                      title="Open on TMDB"
+                      class="relative shrink-0"
+                      title={tmdbMatch.in_library
+                        ? `Already in your Plex library`
+                        : "Open on TMDB"}
                     >
                       <img
                         src={tmdbMatch.poster_url}
@@ -380,6 +383,14 @@
                         class="h-16 w-auto rounded border border-border"
                         loading="lazy"
                       />
+                      {#if tmdbMatch.in_library}
+                        <span
+                          class="absolute -right-1 -top-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[9px] font-bold text-white shadow"
+                          title="Already in your Plex library"
+                        >
+                          ✓ Plex
+                        </span>
+                      {/if}
                     </a>
                   {/if}
                   <div class="min-w-0 flex-1">
@@ -460,6 +471,14 @@
                             {/if}
                             <ExternalLink class="h-3 w-3" />
                           </a>
+                          {#if tmdbMatch.in_library}
+                            <span
+                              class="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"
+                              title="Already in your Plex library"
+                            >
+                              ✓ In Plex
+                            </span>
+                          {/if}
                         {:else}
                           <a
                             href={tmdbSearchUrl(parsed.name, tmdbKind)}
