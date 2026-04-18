@@ -26,7 +26,13 @@
     name: string;
     url: string;
     image: string | null;
+    confidence: number;
   };
+
+  // Below this, the match is too weak to show as "this is probably it" —
+  // we fall back to a Steam search link instead of misleading the user.
+  const MIN_CONFIDENCE = 0.4;
+  const STRONG_CONFIDENCE = 0.75;
 
   const tabs: TabDef[] = [
     { key: "software", label: "Apps", icon: Package },
@@ -262,18 +268,23 @@
                       <span class="inline-flex items-center gap-1 text-muted-foreground/70">
                         <Loader2 class="h-3 w-3 animate-spin" /> looking up…
                       </span>
-                    {:else if match}
+                    {:else if match && match.confidence >= MIN_CONFIDENCE}
+                      {@const isStrong = match.confidence >= STRONG_CONFIDENCE}
                       <a
                         href={match.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="inline-flex items-center gap-1 rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary hover:bg-primary/20"
-                        title="Open on Steam"
+                        class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] {isStrong
+                          ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/20'
+                          : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 dark:text-yellow-400'}"
+                        title={isStrong
+                          ? `Open on Steam (match ${Math.round(match.confidence * 100)}%)`
+                          : `Possible match (${Math.round(match.confidence * 100)}%) — verify`}
                       >
                         {#if match.image}
                           <img src={match.image} alt="" class="h-3 w-auto rounded-sm" />
                         {/if}
-                        Steam: {match.name}
+                        {isStrong ? "Steam" : "Maybe"}: {match.name}
                         <ExternalLink class="h-3 w-3" />
                       </a>
                     {:else}

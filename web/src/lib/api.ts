@@ -521,6 +521,7 @@ export const api = {
           name: string;
           url: string;
           image: string | null;
+          confidence: number;
         } | null;
       }>(`/api/browse/steam?q=${encodeURIComponent(q)}`)
   },
