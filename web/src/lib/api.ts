@@ -54,9 +54,7 @@ export type IndexerType =
   | "unit3d"
   | "rartracker"
   | "custom";
-export type Category = "movies" | "tv" | "music" | "books" | "anime" | "other";
-
-export type BrowseCategory =
+export type Category =
   | "movies"
   | "tv"
   | "music"
@@ -67,6 +65,9 @@ export type BrowseCategory =
   | "games"
   | "software"
   | "other";
+
+// Alias kept for readability in browse-specific call sites.
+export type BrowseCategory = Category;
 
 export type BrowseResponse = {
   category: BrowseCategory;

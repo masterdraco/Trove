@@ -103,7 +103,18 @@
     return `${v.toFixed(1)} ${units[i]}`;
   }
 
-  const allCategories: Category[] = ["movies", "tv", "music", "books", "anime", "other"];
+  const allCategories: Category[] = [
+    "movies",
+    "tv",
+    "anime",
+    "music",
+    "audiobooks",
+    "books",
+    "comics",
+    "games",
+    "software",
+    "other"
+  ];
 </script>
 
 <div class="space-y-6">
