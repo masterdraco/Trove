@@ -158,24 +158,60 @@ run_docker_update() {
     local helper
     helper="trove-updater-$(date +%s)"
 
+    # Critical: mount the host's compose dir at the SAME absolute path
+    # inside the helper. compose resolves relative volume sources (like
+    # ./config) against its cwd — but the actual bind mount is created
+    # by the host's docker daemon, which interprets that source path on
+    # the HOST filesystem. If the helper saw the workdir at /work but
+    # the host had no /work, docker would auto-create an empty /work
+    # and mount that, silently losing all user data on the next up.
+    # Capture the CURRENT /config bind source. The helper verifies that
+    # the bind-mount of workdir actually exposes it before touching the
+    # stack — the v0.10.3 bug was that the helper saw the workdir at
+    # /work (not the host's real path), compose resolved ./config to
+    # /work/config which docker auto-created empty on the host, and the
+    # new container came up with an empty database. Mounting workdir at
+    # the SAME path inside the helper prevents that; this check makes
+    # sure we bail loudly if anything still slips through.
+    old_config_src=$(docker inspect "$self_id" -f '{{range .Mounts}}{{if eq .Destination "/config"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)
+    log "current /config bind source: ${old_config_src:-<none>}"
+
     log "launching helper container: $helper"
     docker run --rm --detach \
         --name "$helper" \
         -v /var/run/docker.sock:/var/run/docker.sock \
-        -v "$workdir:/work" \
-        -w /work \
+        -v "$workdir:$workdir" \
+        -w "$workdir" \
+        -e PROJECT="$project" \
+        -e SERVICE="$service" \
+        -e OLD_CONFIG_SRC="$old_config_src" \
         --entrypoint /bin/sh \
         docker:27-cli \
-        -c "
+        -c '
             set -e
-            echo '[helper] sleeping 3s so the HTTP response flushes…'
+            echo "[helper] sleeping 3s so the HTTP response flushes…"
             sleep 3
-            echo '[helper] docker compose pull $service (project=$project)'
-            docker compose -p '$project' pull '$service'
-            echo '[helper] docker compose up -d $service'
-            docker compose -p '$project' up -d '$service'
-            echo '[helper] done'
-        " >> "$LOG" 2>&1
+
+            # Belt-and-suspenders: our cwd is supposed to be the host
+            # compose dir, which — if the bind mount is correct — must
+            # contain the same trove.db the running container is using.
+            # If not, aborting keeps the old container alive.
+            if [ -n "$OLD_CONFIG_SRC" ] && [ ! -f "$OLD_CONFIG_SRC/trove.db" ]; then
+                echo "[helper] ABORT: $OLD_CONFIG_SRC/trove.db not visible from helper cwd=$PWD"
+                echo "[helper] refusing to run compose up — would mount an unrelated path"
+                exit 1
+            fi
+            if [ -n "$OLD_CONFIG_SRC" ] && [ "${OLD_CONFIG_SRC%/*}" != "$PWD" ]; then
+                echo "[helper] ABORT: cwd $PWD is not the parent of $OLD_CONFIG_SRC"
+                exit 1
+            fi
+
+            echo "[helper] docker compose pull $SERVICE (project=$PROJECT)"
+            docker compose -p "$PROJECT" pull "$SERVICE"
+            echo "[helper] docker compose up -d $SERVICE"
+            docker compose -p "$PROJECT" up -d "$SERVICE"
+            echo "[helper] done"
+        ' >> "$LOG" 2>&1
 
     log "helper running as $helper — this container will be replaced shortly"
     log "==== docker update handoff complete ===="
