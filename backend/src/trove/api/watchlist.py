@@ -159,13 +159,6 @@ def _to_out(row: WatchlistItemRow, session: Session) -> WatchlistOut:
     assert row.id is not None
     count, last_title, last_at = _download_stats(session, row.discovery_task_id)
 
-    # Movies flip to the terminal 'downloaded' state on first successful grab.
-    # Series keep the 'promoted' state so new episodes keep landing.
-    if row.kind == "movie" and count > 0 and row.discovery_status != "downloaded":
-        row.discovery_status = "downloaded"
-        session.add(row)
-        session.commit()
-
     return WatchlistOut(
         id=row.id,
         kind=row.kind,
