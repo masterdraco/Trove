@@ -129,6 +129,59 @@ outputs:
     return "text-muted-foreground";
   }
 
+  function taskState(task: TaskOut): { dot: string; text: string; label: string; title: string } {
+    if (!task.enabled) {
+      return {
+        dot: "bg-destructive",
+        text: "text-destructive",
+        label: "off",
+        title: "Disabled — the scheduler will not run this task"
+      };
+    }
+    const s = task.last_run_status;
+    if (s === "running")
+      return {
+        dot: "bg-blue-400 animate-pulse",
+        text: "text-blue-400",
+        label: "running",
+        title: "Currently running"
+      };
+    if (s === "success")
+      return {
+        dot: "bg-success",
+        text: "text-success",
+        label: "success",
+        title: "Last run grabbed a release"
+      };
+    if (s === "error")
+      return {
+        dot: "bg-destructive",
+        text: "text-destructive",
+        label: "error",
+        title: "Last run errored — see run log"
+      };
+    if (s === "no_match")
+      return {
+        dot: "bg-amber-400",
+        text: "text-amber-400",
+        label: "no match",
+        title: "Last run found hits but none passed filters"
+      };
+    if (s === "no_hits")
+      return {
+        dot: "bg-amber-400/60",
+        text: "text-amber-400/80",
+        label: "no hits",
+        title: "Last run returned no hits"
+      };
+    return {
+      dot: "bg-muted-foreground/60",
+      text: "text-muted-foreground",
+      label: "never run",
+      title: "This task has never run"
+    };
+  }
+
   async function remove(task: TaskOut) {
     if (!confirm(`Delete task "${task.name}"?`)) return;
     await api.tasks.remove(task.id);
@@ -159,22 +212,22 @@ outputs:
     {:else}
       <div class="space-y-1">
         {#each tasks as task (task.id)}
+          {@const st = taskState(task)}
           <button
-            class="flex w-full items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-left text-sm transition-colors {selected?.id ===
+            class="flex w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-left text-sm transition-colors {selected?.id ===
             task.id
               ? 'border-primary bg-primary/5'
               : 'hover:bg-muted'}"
             onclick={() => select_(task)}
+            title={st.title}
           >
-            <div class="min-w-0">
+            <span class="mt-0.5 h-2 w-2 shrink-0 rounded-full {st.dot}" aria-label={st.label}></span>
+            <div class="min-w-0 flex-1">
               <div class="truncate font-medium">{task.name}</div>
               <div class="truncate text-xs text-muted-foreground">
-                {task.schedule_cron ?? "manual"} · {task.last_run_status ?? "never run"}
+                {task.schedule_cron ?? "manual"} · <span class={st.text}>{st.label}</span>
               </div>
             </div>
-            {#if !task.enabled}
-              <span class="ml-2 text-[10px] uppercase text-muted-foreground">off</span>
-            {/if}
           </button>
         {/each}
       </div>
