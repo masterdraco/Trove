@@ -46,6 +46,6 @@ def test_every_vendored_yaml_parses() -> None:
     for entry in catalog.list_entries():
         try:
             load_definition_yaml(catalog.read_yaml(entry.slug))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             failures.append(f"{entry.slug}: {type(e).__name__}: {e}")
     assert not failures, "YAMLs failed to parse:\n  " + "\n  ".join(failures)

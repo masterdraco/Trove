@@ -65,9 +65,7 @@ def load_catalog() -> dict[str, CatalogEntry]:
         if not mirrors:
             raise CatalogError(f"registry.yaml: {slug}: at least one mirror required")
         if default_mirror not in mirrors:
-            raise CatalogError(
-                f"registry.yaml: {slug}: default_mirror must be a member of mirrors"
-            )
+            raise CatalogError(f"registry.yaml: {slug}: default_mirror must be a member of mirrors")
 
         by_slug[slug] = CatalogEntry(
             slug=slug,
