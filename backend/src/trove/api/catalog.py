@@ -61,3 +61,64 @@ async def list_catalog(
             )
         )
     return out
+
+
+def _dedup_name(session: Session, base: str) -> str:
+    candidate = base
+    suffix = 2
+    while (
+        session.exec(select(IndexerRow).where(IndexerRow.name == candidate)).first()
+        is not None
+    ):
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+@router.post("/{slug}", response_model=IndexerOut, status_code=status.HTTP_201_CREATED)
+async def install_catalog_entry(
+    slug: str,
+    payload: CatalogInstallRequest,
+    session: Session = Depends(db_session),
+    _user: User = Depends(current_user),
+) -> IndexerOut:
+    try:
+        entry = catalog.get_entry(slug)
+    except KeyError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="unknown_slug"
+        ) from None
+
+    if payload.base_url not in entry.mirrors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="base_url_not_in_catalog_mirrors",
+        )
+
+    try:
+        yaml_text = catalog.read_yaml(slug)
+        load_definition_yaml(yaml_text)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"catalog_yaml_broken: {e}",
+        ) from e
+
+    base_name = payload.name or entry.display_name
+    name = _dedup_name(session, base_name)
+
+    row = IndexerRow(
+        name=name,
+        type="cardigann",
+        protocol=entry.protocol.value,
+        base_url=payload.base_url,
+        credentials_cipher=indexer_registry.encrypt_credentials({}),
+        definition_yaml=yaml_text,
+        enabled=True,
+        priority=50,
+        catalog_slug=slug,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_out(row)
