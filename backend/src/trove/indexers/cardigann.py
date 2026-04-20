@@ -66,6 +66,7 @@ class CardigannDefinition:
     fields: dict[str, FieldSpec]
     category_mapping: dict[str, Category] = field(default_factory=dict)
     protocol: Protocol = Protocol.TORRENT
+    config_defaults: dict[str, str] = field(default_factory=dict)  # from settings: block
 
 
 def _coerce_field(spec_data: dict[str, Any] | str) -> FieldSpec:
@@ -113,6 +114,22 @@ def load_definition(data: dict[str, Any]) -> CardigannDefinition:
     protocol_str = (data.get("type") or "").lower()
     protocol = Protocol.USENET if "usenet" in protocol_str else Protocol.TORRENT
 
+    config_defaults: dict[str, str] = {}
+    for item in data.get("settings") or []:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if not isinstance(name, str):
+            continue
+        default = item.get("default")
+        if default is None:
+            continue
+        # Normalize bools to Go-template casing
+        if isinstance(default, bool):
+            config_defaults[name] = "True" if default else "False"
+        else:
+            config_defaults[name] = str(default)
+
     return CardigannDefinition(
         site=str(data.get("site", "")),
         name=str(data.get("name") or data.get("site", "")),
@@ -123,6 +140,7 @@ def load_definition(data: dict[str, Any]) -> CardigannDefinition:
         fields=fields_map,
         category_mapping=category_mapping,
         protocol=protocol,
+        config_defaults=config_defaults,
     )
 
 
@@ -131,6 +149,104 @@ def load_definition_yaml(text: str) -> CardigannDefinition:
     if not isinstance(data, dict):
         raise IndexerError("cardigann: YAML root must be a mapping")
     return load_definition(data)
+
+
+# ---------------------------------------------------------------------------
+# Minimal Go-template subset evaluator for Prowlarr YAMLs.
+#
+# Supported:
+#   {{ .Keywords }}                                -> query terms or ""
+#   {{ .Query.IMDBID }}, {{ .Query.TMDBID }}       -> always ""
+#   {{ .Config.X }}                                -> config[X] or ""
+#   {{ if .Keywords }}A{{ else }}B{{ end }}        -> A if keywords non-empty, else B
+#   {{ if and .Keywords ... }}A{{ else }}B{{ end }}-> same (conservative: keywords-present check)
+#   {{ if or .Query.IMDBID .Keywords }}...{{ end }}-> keywords-present check
+#   {{ range .Categories }}...{{ end }}            -> "" (categories not piped through)
+#   {{ join .Categories "," }}                     -> ""
+#
+# NOT supported: arbitrary nested ifs, function calls inside template
+# expressions, range loops over arbitrary collections.
+# Unrecognized templates pass through unchanged (never crash).
+# ---------------------------------------------------------------------------
+
+_IF_ELSE_END_RE = re.compile(
+    r"\{\{\s*if\s+(.+?)\s*\}\}(.*?)\{\{\s*else\s*\}\}(.*?)\{\{\s*end\s*\}\}",
+    re.DOTALL,
+)
+_IF_END_RE = re.compile(
+    r"\{\{\s*if\s+(.+?)\s*\}\}(.*?)\{\{\s*end\s*\}\}",
+    re.DOTALL,
+)
+_RANGE_END_RE = re.compile(
+    r"\{\{\s*range\s+.+?\s*\}\}.*?\{\{\s*end\s*\}\}",
+    re.DOTALL,
+)
+_JOIN_RE = re.compile(
+    r'\{\{\s*join\s+\.Categories\s+"[^"]*"\s*\}\}',
+)
+_KEYWORDS_RE = re.compile(r"\{\{\s*\.Keywords\s*\}\}")
+_QUERY_IMDB_RE = re.compile(r"\{\{\s*\.Query\.(IMDBID|TMDBID|TVDBID)\s*\}\}")
+_CONFIG_RE = re.compile(r"\{\{\s*\.Config\.([\w\-]+)\s*\}\}")
+
+
+def expand_template(
+    text: str,
+    *,
+    keywords: str = "",
+    config: dict[str, str] | None = None,
+) -> str:
+    """Expand a Cardigann/Go-template string.
+
+    See the module comment above for the supported subset. Anything unrecognized
+    passes through unchanged so upstream failures are visible rather than
+    silently producing wrong URLs.
+    """
+    if "{{" not in text:
+        return text
+    cfg = config or {}
+    keywords_present = bool(keywords)
+
+    # Drop range blocks entirely (categories-iter is the only real use).
+    text = _RANGE_END_RE.sub("", text)
+    # join .Categories -> empty
+    text = _JOIN_RE.sub("", text)
+
+    # Repeatedly resolve if/else/end from the innermost occurrence outward.
+    # Prowlarr chains them, so loop until stable.
+    for _ in range(10):
+        before = text
+
+        def _ifelse(m: re.Match[str]) -> str:  # noqa: E306
+            return m.group(2) if keywords_present else m.group(3)
+
+        text = _IF_ELSE_END_RE.sub(_ifelse, text)
+        if text == before:
+            break
+
+    # Bare {{ if ... }}X{{ end }} without else -> X if keywords else ""
+    for _ in range(10):
+        before = text
+
+        def _if(m: re.Match[str]) -> str:  # noqa: E306
+            return m.group(2) if keywords_present else ""
+
+        text = _IF_END_RE.sub(_if, text)
+        if text == before:
+            break
+
+    # Variable substitutions.
+    text = _KEYWORDS_RE.sub(lambda _: keywords, text)
+    text = _QUERY_IMDB_RE.sub("", text)
+
+    def _cfg(m: re.Match[str]) -> str:
+        return cfg.get(m.group(1), "")
+
+    text = _CONFIG_RE.sub(_cfg, text)
+
+    # .Result.* is not a request-time substitution — leave intact for
+    # field-extraction-time expansion (a separate call site).
+
+    return text
 
 
 def _map_category(cat_id: int) -> Category | None:
@@ -183,16 +299,19 @@ class CardigannIndexer(Indexer):
         return IndexerHealth(ok=True)
 
     async def search(self, query: SearchQuery) -> list[Release]:
+        cfg = self.definition.config_defaults
+        kw = query.terms or ""
         params: dict[str, Any] = {}
         for key, template in (self.definition.search_params or {}).items():
             if isinstance(template, str):
-                params[key] = template.replace("{{.Query.Keywords}}", query.terms)
+                params[key] = expand_template(template, keywords=kw, config=cfg)
             else:
                 params[key] = template
         if "q" not in params and "search" not in params and "query" not in params:
-            params["q"] = query.terms
+            params["q"] = kw
 
-        url = self.base_url + self.definition.search_path
+        path = expand_template(self.definition.search_path, keywords=kw, config=cfg)
+        url = self.base_url + path
         try:
             resp = await self._client.get(url, params=params)
         except httpx.HTTPError as e:
@@ -201,28 +320,37 @@ class CardigannIndexer(Indexer):
             raise IndexerError(f"{self.name}: HTTP {resp.status_code}")
 
         soup = BeautifulSoup(resp.text, "lxml")
-        rows = soup.select(self.definition.rows_selector)
+        rows_selector = expand_template(self.definition.rows_selector, keywords=kw, config=cfg)
+        rows = soup.select(rows_selector)
 
         releases: list[Release] = []
         for row in rows[: query.limit]:
-            release = self._extract_release(row)
+            release = self._extract_release(row, keywords=kw, config=cfg)
             if release is not None:
                 releases.append(release)
         return releases
 
-    def _extract_release(self, row: Tag) -> Release | None:
-        title = self._extract_field(row, "title")
+    def _extract_release(
+        self,
+        row: Tag,
+        *,
+        keywords: str = "",
+        config: dict[str, str] | None = None,
+    ) -> Release | None:
+        title = self._extract_field(row, "title", keywords=keywords, config=config)
         if not title:
             return None
-        download_url = self._extract_field(row, "download") or self._extract_field(row, "details")
+        download_url = self._extract_field(
+            row, "download", keywords=keywords, config=config
+        ) or self._extract_field(row, "details", keywords=keywords, config=config)
         if download_url and not download_url.startswith(("http://", "https://", "magnet:")):
             download_url = self.base_url + (
                 download_url if download_url.startswith("/") else f"/{download_url}"
             )
 
-        size = _parse_size(self._extract_field(row, "size"))
-        infohash = self._extract_field(row, "infohash") or None
-        category = self._extract_field(row, "category")
+        size = _parse_size(self._extract_field(row, "size", keywords=keywords, config=config))
+        infohash = self._extract_field(row, "infohash", keywords=keywords, config=config) or None
+        category = self._extract_field(row, "category", keywords=keywords, config=config)
 
         return Release(
             title=title,
@@ -234,7 +362,14 @@ class CardigannIndexer(Indexer):
             source=self.name,
         )
 
-    def _extract_field(self, row: Tag, key: str) -> str | None:
+    def _extract_field(
+        self,
+        row: Tag,
+        key: str,
+        *,
+        keywords: str = "",
+        config: dict[str, str] | None = None,
+    ) -> str | None:
         spec = self.definition.fields.get(key)
         if spec is None:
             return None
@@ -242,14 +377,24 @@ class CardigannIndexer(Indexer):
             return spec.text
 
         target: Tag | None = row
-        if spec.selector:
-            target = row.select_one(spec.selector)
+        selector = (
+            expand_template(spec.selector, keywords=keywords, config=(config or {}))
+            if spec.selector
+            else None
+        )
+        if selector:
+            target = row.select_one(selector)
         if target is None:
             return None
 
         value: str | None
-        if spec.attribute:
-            raw = target.get(spec.attribute)
+        attribute = (
+            expand_template(spec.attribute, keywords=keywords, config=(config or {}))
+            if spec.attribute
+            else None
+        )
+        if attribute:
+            raw = target.get(attribute)
             value = (raw[0] if raw else None) if isinstance(raw, list) else raw
         else:
             value = target.get_text(" ", strip=True)
