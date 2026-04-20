@@ -288,4 +288,8 @@ class CardigannIndexer(Indexer):
                 return parts[index]
             except IndexError:
                 return value
+        if name == "trim":
+            if isinstance(args, str) and args:
+                return value.strip(args)
+            return value.strip()
         return value

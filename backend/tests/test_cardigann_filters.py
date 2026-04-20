@@ -48,3 +48,19 @@ def test_split_negative_index_returns_last() -> None:
         [{"name": "split", "args": ["|", -1]}],
     )
     assert _apply(drv, "<tr><td>a|b|c</td></tr>", "size") == "c"
+
+
+def test_trim_with_no_args_strips_whitespace() -> None:
+    drv = _driver_with_field(
+        "title",
+        [{"name": "split", "args": ["|", 0]}, {"name": "trim"}],
+    )
+    assert _apply(drv, "<tr><td>  hello  | world</td></tr>", "title") == "hello"
+
+
+def test_trim_with_args_strips_specific_chars() -> None:
+    drv = _driver_with_field(
+        "title",
+        [{"name": "split", "args": [" | ", 0]}, {"name": "trim", "args": "/"}],
+    )
+    assert _apply(drv, "<tr><td>/path/to/thing/ | rest</td></tr>", "title") == "path/to/thing"
