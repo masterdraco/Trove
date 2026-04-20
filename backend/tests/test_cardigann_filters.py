@@ -64,3 +64,8 @@ def test_trim_with_args_strips_specific_chars() -> None:
         [{"name": "split", "args": [" | ", 0]}, {"name": "trim", "args": "/"}],
     )
     assert _apply(drv, "<tr><td>/path/to/thing/ | rest</td></tr>", "title") == "path/to/thing"
+
+
+def test_tolower() -> None:
+    drv = _driver_with_field("title", [{"name": "tolower"}])
+    assert _apply(drv, "<tr><td>Hello WORLD</td></tr>", "title") == "hello world"

@@ -292,4 +292,6 @@ class CardigannIndexer(Indexer):
             if isinstance(args, str) and args:
                 return value.strip(args)
             return value.strip()
+        if name == "tolower":
+            return value.lower()
         return value
