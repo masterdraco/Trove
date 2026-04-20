@@ -30,3 +30,21 @@ def _apply(driver: CardigannIndexer, html: str, field: str) -> str | None:
 def test_urldecode() -> None:
     drv = _driver_with_field("title", [{"name": "urldecode"}])
     assert _apply(drv, "<tr><td>Hello%20World</td></tr>", "title") == "Hello World"
+
+
+def test_split_by_delimiter_index() -> None:
+    drv = _driver_with_field(
+        "size",
+        [{"name": "split", "args": ["|", 1]}],
+    )
+    result = _apply(drv, "<tr><td>1.2 GB | 42 seeders | 3 leechers</td></tr>", "size")
+    assert result is not None
+    assert result.strip() == "42 seeders"
+
+
+def test_split_negative_index_returns_last() -> None:
+    drv = _driver_with_field(
+        "size",
+        [{"name": "split", "args": ["|", -1]}],
+    )
+    assert _apply(drv, "<tr><td>a|b|c</td></tr>", "size") == "c"

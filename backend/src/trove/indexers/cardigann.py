@@ -275,4 +275,17 @@ class CardigannIndexer(Indexer):
         if name == "urldecode":
             from urllib.parse import unquote
             return unquote(value)
+        if name == "split" and isinstance(args, list) and len(args) >= 2:
+            delimiter = str(args[0])
+            try:
+                index = int(args[1])
+            except (TypeError, ValueError):
+                return value
+            parts = value.split(delimiter)
+            if not parts:
+                return value
+            try:
+                return parts[index]
+            except IndexError:
+                return value
         return value
