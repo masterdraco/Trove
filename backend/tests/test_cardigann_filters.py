@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from bs4 import BeautifulSoup
 
 from trove.indexers.cardigann import (
@@ -69,3 +71,20 @@ def test_trim_with_args_strips_specific_chars() -> None:
 def test_tolower() -> None:
     drv = _driver_with_field("title", [{"name": "tolower"}])
     assert _apply(drv, "<tr><td>Hello WORLD</td></tr>", "title") == "hello world"
+
+
+def test_re_replace() -> None:
+    # Replace sequences of whitespace with a single dash.
+    drv = _driver_with_field(
+        "title",
+        [{"name": "re_replace", "args": [r"\s+", "-"]}],
+    )
+    assert _apply(drv, "<tr><td>Big Buck  Bunny</td></tr>", "title") == "Big-Buck-Bunny"
+
+
+def test_re_replace_removes_matches_with_empty_replacement() -> None:
+    drv = _driver_with_field(
+        "title",
+        [{"name": "re_replace", "args": [r"\d+", ""]}],
+    )
+    assert _apply(drv, "<tr><td>abc123def456</td></tr>", "title") == "abcdef"

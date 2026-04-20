@@ -294,4 +294,11 @@ class CardigannIndexer(Indexer):
             return value.strip()
         if name == "tolower":
             return value.lower()
+        if name == "re_replace" and isinstance(args, list) and len(args) >= 2:
+            pattern = str(args[0])
+            replacement = str(args[1])
+            try:
+                return re.sub(pattern, replacement, value)
+            except re.error:
+                return value
         return value
