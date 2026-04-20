@@ -184,6 +184,16 @@ _RANGE_END_RE = re.compile(
 _JOIN_RE = re.compile(
     r'\{\{\s*join\s+\.Categories\s+"[^"]*"\s*\}\}',
 )
+# Go template `or` expression used as a value (not inside an if condition).
+# Example: {{ or .Query.IMDBID .Keywords }}
+# Returns the first truthy arg. We only support .Query.* (always empty) and
+# .Keywords — enough for the YAMLs in the current catalog.
+_OR_EXPR_RE = re.compile(r"\{\{\s*or\s+(.+?)\s*\}\}")
+# Go template `re_replace` function call used inline (not as a field filter).
+# Example: {{ re_replace .Config.sort "_" "" }}
+_RE_REPLACE_INLINE_RE = re.compile(
+    r'\{\{\s*re_replace\s+\.Config\.([\w\-]+)\s+"([^"]*)"\s+"([^"]*)"\s*\}\}'
+)
 _KEYWORDS_RE = re.compile(r"\{\{\s*\.Keywords\s*\}\}")
 _QUERY_IMDB_RE = re.compile(r"\{\{\s*\.Query\.(IMDBID|TMDBID|TVDBID)\s*\}\}")
 _CONFIG_RE = re.compile(r"\{\{\s*\.Config\.([\w\-]+)\s*\}\}")
@@ -233,6 +243,37 @@ def expand_template(
         text = _IF_END_RE.sub(_if, text)
         if text == before:
             break
+
+    # `or` expression as value: return first truthy arg.
+    def _or_value(m: re.Match[str]) -> str:
+        args = m.group(1).split()
+        for arg in args:
+            if arg == ".Keywords":
+                if keywords_present:
+                    return keywords
+            elif arg.startswith(".Query."):
+                # .Query.IMDBID, .Query.TMDBID, etc. are always empty here.
+                continue
+            elif arg.startswith(".Config."):
+                name = arg[len(".Config.") :]
+                val = cfg.get(name, "")
+                if val:
+                    return val
+            # Unknown reference → skip and try next arg.
+        return ""
+
+    text = _OR_EXPR_RE.sub(_or_value, text)
+
+    # Inline re_replace on a Config value.
+    def _inline_re_replace(m: re.Match[str]) -> str:
+        config_name, pattern, replacement = m.group(1), m.group(2), m.group(3)
+        source = cfg.get(config_name, "")
+        try:
+            return re.sub(pattern, replacement, source)
+        except re.error:
+            return source
+
+    text = _RE_REPLACE_INLINE_RE.sub(_inline_re_replace, text)
 
     # Variable substitutions.
     text = _KEYWORDS_RE.sub(lambda _: keywords, text)

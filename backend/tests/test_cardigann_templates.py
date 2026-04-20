@@ -100,3 +100,37 @@ def test_1337x_url_construction_uses_expanded_template() -> None:
     assert "{{" not in path, f"path still has templates: {path}"
     assert "ubuntu" in path
     assert path.startswith("/") or "search" in path or "sort-" in path
+
+
+def test_expand_or_expression_returns_first_truthy() -> None:
+    # Go template `or` returns first truthy arg. .Query.IMDBID is always empty,
+    # so `or .Query.IMDBID .Keywords` should return keywords.
+    tmpl = "get-posts/keywords:{{ or .Query.IMDBID .Keywords }}"
+    assert expand_template(tmpl, keywords="ubuntu") == "get-posts/keywords:ubuntu"
+
+
+def test_expand_or_expression_fallback_to_keywords() -> None:
+    tmpl = "{{ or .Query.IMDBID .Keywords }}"
+    assert expand_template(tmpl, keywords="ubuntu") == "ubuntu"
+    # When nothing is truthy, result is empty string (last arg is also empty).
+    assert expand_template(tmpl, keywords="") == ""
+
+
+def test_expand_inline_re_replace_on_config() -> None:
+    # bitsearch path uses: search{{ re_replace .Config.sort "_" "" }}?q=...
+    cfg = {"sort": "date_desc"}
+    tmpl = '{{ re_replace .Config.sort "_" "" }}'
+    assert expand_template(tmpl, keywords="x", config=cfg) == "datedesc"
+
+
+def test_expand_bitsearch_full_path() -> None:
+    cfg = {"sort": "date_desc"}
+    tmpl = '{{ if .Keywords }}search{{ re_replace .Config.sort "_" "" }}?q={{ .Keywords }}{{ else }}/{{ end }}'
+    assert expand_template(tmpl, keywords="ubuntu", config=cfg) == "searchdatedesc?q=ubuntu"
+
+
+def test_expand_torrentgalaxy_full_path() -> None:
+    tmpl = "get-posts/{{ if or .Query.IMDBID .Keywords }}keywords:{{ or .Query.IMDBID .Keywords }}{{ else }}{{ end }}{{ range .Categories }}:category:{{.}}{{end}}"
+    result = expand_template(tmpl, keywords="ubuntu")
+    assert result == "get-posts/keywords:ubuntu"
+    assert "{{" not in result
