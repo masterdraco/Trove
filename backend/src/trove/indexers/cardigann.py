@@ -216,7 +216,7 @@ def expand_template(
     for _ in range(10):
         before = text
 
-        def _ifelse(m: re.Match[str]) -> str:  # noqa: E306
+        def _ifelse(m: re.Match[str]) -> str:
             return m.group(2) if keywords_present else m.group(3)
 
         text = _IF_ELSE_END_RE.sub(_ifelse, text)
@@ -227,7 +227,7 @@ def expand_template(
     for _ in range(10):
         before = text
 
-        def _if(m: re.Match[str]) -> str:  # noqa: E306
+        def _if(m: re.Match[str]) -> str:
             return m.group(2) if keywords_present else ""
 
         text = _IF_END_RE.sub(_if, text)
