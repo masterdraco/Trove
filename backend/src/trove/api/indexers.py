@@ -148,6 +148,10 @@ async def delete_indexer(
     row = session.get(IndexerRow, indexer_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    # The indexer_event FK is not declared with ON DELETE CASCADE, and SQLite
+    # enforces FK integrity here — so a plain row delete raises IntegrityError
+    # as soon as the indexer has any search history. Clear events first.
+    session.execute(sql_delete(IndexerEventRow).where(IndexerEventRow.indexer_id == indexer_id))
     session.delete(row)
     session.commit()
 
