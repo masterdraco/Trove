@@ -30,16 +30,21 @@
 
   async function install(entry: CatalogEntryOut) {
     installingSlug = entry.slug;
-    perEntryError[entry.slug] = "";
+    perEntryError = { ...perEntryError, [entry.slug]: "" };
     try {
       await api.indexers.catalog.install(entry.slug, {
         base_url: selectedMirror[entry.slug],
         name: null
       });
-      await load();
+      entries = entries.map((e) =>
+        e.slug === entry.slug ? { ...e, already_installed: true } : e
+      );
     } catch (e) {
       const err = e as { detail?: string };
-      perEntryError[entry.slug] = err.detail ?? "Install failed.";
+      perEntryError = {
+        ...perEntryError,
+        [entry.slug]: err.detail ?? "Install failed."
+      };
     } finally {
       installingSlug = null;
     }
