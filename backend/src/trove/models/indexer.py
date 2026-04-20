@@ -25,6 +25,7 @@ class IndexerRow(SQLModel, table=True):
     last_test_at: datetime | None = Field(default=None)
     last_test_ok: bool | None = Field(default=None)
     last_test_message: str | None = Field(default=None, max_length=512)
+    catalog_slug: str | None = Field(default=None, max_length=64, index=True)
 
 
 class IndexerEventRow(SQLModel, table=True):

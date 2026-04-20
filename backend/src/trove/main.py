@@ -34,6 +34,7 @@ from trove.api import system as system_router
 from trove.api import tasks as tasks_router
 from trove.api import torznab as torznab_router
 from trove.api import watchlist as watchlist_router
+from trove.api.catalog import router as catalog_router
 from trove.config import get_settings
 from trove.db import init_db
 from trove.logging_setup import configure_logging
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router.router, prefix="/api/auth", tags=["auth"])
     app.include_router(clients_router.router, prefix="/api/clients", tags=["clients"])
     app.include_router(indexers_router.router, prefix="/api/indexers", tags=["indexers"])
+    app.include_router(catalog_router, prefix="/api/indexers/catalog", tags=["catalog"])
     app.include_router(search_router.router, prefix="/api/search", tags=["search"])
     app.include_router(browse_router.router, prefix="/api/browse", tags=["browse"])
     app.include_router(alerts_router.router, prefix="/api/alerts", tags=["alerts"])

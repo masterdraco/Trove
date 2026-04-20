@@ -1,0 +1,123 @@
+# Authoritative index of public no-account torrent sites shipped with Trove.
+# Each entry references a vendored Cardigann YAML in the same directory.
+#
+# Filenames under `yaml_file:` are OUR vendored filenames — they need not
+# match upstream. `upstream_path:` records where the definition came from
+# so scripts/update-catalog.py can diff against Prowlarr-indexers.
+
+entries:
+  - slug: 1337x
+    display_name: 1337x
+    description: Large public general-purpose tracker with strong TV/movie scene coverage.
+    categories: [movies, tv, music, software, games, books, anime]
+    yaml_file: 1337x.yml
+    upstream_path: definitions/v11/1337x.yml
+    mirrors:
+      - https://1337x.to
+      - https://1337x.st
+      - https://1337x.tw
+    default_mirror: https://1337x.to
+    protocol: torrent
+
+  - slug: torrentgalaxy
+    display_name: TorrentGalaxy
+    description: General-purpose public tracker with reliable scene releases and good category filtering.
+    categories: [movies, tv, music, software, games, books, anime, other]
+    yaml_file: torrentgalaxy.yml
+    upstream_path: definitions/v11/torrentgalaxyclone.yml
+    mirrors:
+      - https://torrentgalaxy.one
+      - https://torrentgalaxy.info
+      - https://torrentgalaxy.space
+    default_mirror: https://torrentgalaxy.one
+    protocol: torrent
+
+  - slug: limetorrents
+    display_name: LimeTorrents
+    description: Long-running public aggregator with a wide catalogue.
+    categories: [movies, tv, music, software, games, anime, other]
+    yaml_file: limetorrents.yml
+    upstream_path: definitions/v11/limetorrents.yml
+    mirrors:
+      - https://www.limetorrents.lol
+      - https://www.limetorrents.info
+    default_mirror: https://www.limetorrents.lol
+    protocol: torrent
+
+  - slug: magnetdl
+    display_name: ExtraTorrent
+    description: Public tracker for MOVIE / TV / GENERAL magnets (replaces magnetdl which has no upstream Cardigann definition).
+    categories: [movies, tv, music, software, games, books, anime]
+    yaml_file: magnetdl.yml
+    upstream_path: definitions/v11/extratorrent-st.yml
+    mirrors:
+      - https://extratorrent.st
+    default_mirror: https://extratorrent.st
+    protocol: torrent
+
+  - slug: torlock
+    display_name: KickAssTorrents
+    description: Public KickAssTorrent clone for MOVIES / TV / GENERAL (replaces torlock which has no upstream Cardigann definition).
+    categories: [movies, tv, music, software, games, books, anime]
+    yaml_file: torlock.yml
+    upstream_path: definitions/v11/kickasstorrents-to.yml
+    mirrors:
+      - https://kickass.torrentbay.st
+    default_mirror: https://kickass.torrentbay.st
+    protocol: torrent
+
+  - slug: bitsearch
+    display_name: TorrentDownload
+    description: Public torrent meta-search engine (replaces bitsearch which has no upstream Cardigann definition).
+    categories: [movies, tv, music, software, games, books, anime, other]
+    yaml_file: bitsearch.yml
+    upstream_path: definitions/v11/torrentdownload.yml
+    mirrors:
+      - https://www.torrentdownload.info
+    default_mirror: https://www.torrentdownload.info
+    protocol: torrent
+
+  - slug: solidtorrents
+    display_name: TorrentProject2
+    description: Public torrent meta-search engine (replaces solidtorrents which has no upstream Cardigann definition).
+    categories: [movies, tv, music, software, games, books, anime, other]
+    yaml_file: solidtorrents.yml
+    upstream_path: definitions/v11/torrentproject2.yml
+    mirrors:
+      - https://torrentproject2.net
+    default_mirror: https://torrentproject2.net
+    protocol: torrent
+
+  - slug: nyaa
+    display_name: Nyaa
+    description: The largest public anime & manga tracker.
+    categories: [anime, music, books, other]
+    yaml_file: nyaa.yml
+    upstream_path: definitions/v11/nyaasi.yml
+    mirrors:
+      - https://nyaa.si
+    default_mirror: https://nyaa.si
+    protocol: torrent
+
+  - slug: eztv
+    display_name: EZTV
+    description: TV-focused public tracker with strong scene release coverage.
+    categories: [tv]
+    yaml_file: eztv.yml
+    upstream_path: definitions/v11/eztv.yml
+    mirrors:
+      - https://eztv.re
+      - https://eztvx.to
+    default_mirror: https://eztv.re
+    protocol: torrent
+
+  - slug: animetosho
+    display_name: Tokyo Toshokan
+    description: Public BitTorrent library for Japanese media including anime (replaces animetosho which has no upstream Cardigann definition).
+    categories: [anime]
+    yaml_file: animetosho.yml
+    upstream_path: definitions/v11/tokyotosho.yml
+    mirrors:
+      - https://www.tokyotosho.info
+    default_mirror: https://www.tokyotosho.info
+    protocol: torrent

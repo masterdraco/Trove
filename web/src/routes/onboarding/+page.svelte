@@ -7,7 +7,8 @@
     type IndexerType,
     type Protocol,
     type DownloadClientOut,
-    type IndexerOut
+    type IndexerOut,
+    type CatalogEntryOut
   } from "$lib/api";
   import { CLIENT_TYPES } from "$lib/clientTypes";
   import {
@@ -25,7 +26,7 @@
     Trash2
   } from "lucide-svelte";
 
-  type Step = "welcome" | "client" | "indexer" | "ai" | "tmdb" | "done";
+  type Step = "welcome" | "client" | "indexer" | "catalog" | "ai" | "tmdb" | "done";
   let step = $state<Step>("welcome");
 
   let clients = $state<DownloadClientOut[]>([]);
@@ -77,6 +78,61 @@
   let indexerSaving = $state(false);
   let indexerError = $state<string | null>(null);
   let indexerJustSaved = $state<string | null>(null);
+
+  // Catalog step state
+  let catalogEntries = $state<CatalogEntryOut[]>([]);
+  let catalogLoading = $state(false);
+  let catalogSelected = $state<Set<string>>(new Set());
+  let catalogInstalling = $state(false);
+  let catalogError = $state<string | null>(null);
+  let catalogLoaded = $state(false);
+
+  $effect(() => {
+    if (step === "catalog") loadCatalog();
+  });
+
+  async function loadCatalog() {
+    if (catalogLoaded || catalogLoading) return;
+    catalogLoading = true;
+    try {
+      catalogEntries = await api.indexers.catalog.list();
+      catalogLoaded = true;
+    } catch (e) {
+      const err = e as { detail?: string };
+      catalogError = err.detail ?? "Failed to load catalog.";
+    } finally {
+      catalogLoading = false;
+    }
+  }
+
+  function toggleCatalog(slug: string) {
+    const next = new Set(catalogSelected);
+    if (next.has(slug)) next.delete(slug);
+    else next.add(slug);
+    catalogSelected = next;
+  }
+
+  async function installSelectedCatalog() {
+    catalogInstalling = true;
+    catalogError = null;
+    for (const entry of catalogEntries) {
+      if (!catalogSelected.has(entry.slug) || entry.already_installed) continue;
+      try {
+        await api.indexers.catalog.install(entry.slug, {
+          base_url: entry.default_mirror,
+          name: null
+        });
+      } catch (e) {
+        const err = e as { detail?: string };
+        catalogError = `${entry.display_name}: ${err.detail ?? "install failed"}`;
+        catalogInstalling = false;
+        return;
+      }
+    }
+    catalogInstalling = false;
+    indexers = await api.indexers.list();
+    step = "ai";
+  }
 
   // AI state
   let aiTesting = $state(false);
@@ -242,6 +298,7 @@
     { key: "welcome", label: "Welcome", icon: Sparkles },
     { key: "client", label: "Download client", icon: Download },
     { key: "indexer", label: "Indexer", icon: Database },
+    { key: "catalog", label: "Public sites", icon: Database },
     { key: "ai", label: "AI", icon: Sparkles },
     { key: "tmdb", label: "Discover", icon: Sparkles },
     { key: "done", label: "Done", icon: PartyPopper }
@@ -584,7 +641,7 @@
             <button
               type="button"
               class="inline-flex items-center gap-1 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              onclick={() => (step = "ai")}
+              onclick={() => (step = "catalog")}
             >
               Continue <ChevronRight class="h-4 w-4" />
             </button>
@@ -663,7 +720,7 @@
           <button
             type="button"
             class="rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
-            onclick={() => (step = "ai")}
+            onclick={() => (step = "catalog")}
           >
             {indexers.length > 0 ? "Continue" : "Skip"}
           </button>
@@ -677,6 +734,83 @@
           </button>
         </div>
       {/if}
+    </div>
+  {/if}
+
+  {#if step === "catalog"}
+    <div class="rounded-2xl border border-border bg-card p-8 shadow-sm">
+      <div class="flex items-start justify-between">
+        <div>
+          <h2 class="flex items-center gap-2 text-xl font-semibold">
+            <Database class="h-5 w-5 text-primary" /> Public torrent sites (optional)
+          </h2>
+          <p class="mt-1 text-sm text-muted-foreground">
+            Pick any public sites you want Trove to search. You can always add more later.
+          </p>
+        </div>
+      </div>
+
+      {#if catalogLoading}
+        <div class="mt-6 text-sm text-muted-foreground">Loading catalog…</div>
+      {:else}
+        <div class="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
+          {#each catalogEntries as entry (entry.slug)}
+            <label
+              class="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-background p-3 hover:bg-muted"
+              class:opacity-50={entry.already_installed}
+            >
+              <input
+                type="checkbox"
+                class="mt-1 h-4 w-4"
+                checked={catalogSelected.has(entry.slug)}
+                disabled={entry.already_installed}
+                onchange={() => toggleCatalog(entry.slug)}
+              />
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 text-sm font-medium">
+                  {entry.display_name}
+                  {#if entry.already_installed}
+                    <span class="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
+                      installed
+                    </span>
+                  {/if}
+                </div>
+                <div class="mt-0.5 text-xs text-muted-foreground">{entry.description}</div>
+              </div>
+            </label>
+          {/each}
+        </div>
+      {/if}
+
+      {#if catalogError}
+        <div class="mt-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {catalogError}
+        </div>
+      {/if}
+
+      <div class="mt-6 flex items-center justify-between">
+        <button
+          type="button"
+          class="rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
+          onclick={() => (step = "ai")}
+        >
+          <SkipForward class="mr-1 inline h-4 w-4" />
+          Skip
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center gap-1 rounded-md bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+          disabled={catalogInstalling || catalogSelected.size === 0}
+          onclick={installSelectedCatalog}
+        >
+          {#if catalogInstalling}
+            <Loader2 class="h-4 w-4 animate-spin" /> Installing…
+          {:else}
+            Add {catalogSelected.size} site{catalogSelected.size === 1 ? "" : "s"}
+            <ChevronRight class="h-4 w-4" />
+          {/if}
+        </button>
+      </div>
     </div>
   {/if}
 

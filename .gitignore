@@ -55,3 +55,6 @@ session.secret
 # Logs
 *.log
 /logs/
+
+# Worktrees
+.worktrees/
