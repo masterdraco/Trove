@@ -22,6 +22,15 @@ from trove.indexers.base import (
 log = logging.getLogger(__name__)
 _WARNED_FILTERS: set[str] = set()
 
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 SIZE_RE = re.compile(r"([\d.,]+)\s*(TB|GB|MB|KB|B)", re.IGNORECASE)
 SIZE_MULTIPLIERS = {
     "B": 1,
@@ -325,7 +334,16 @@ class CardigannIndexer(Indexer):
         self.base_url = (base_url or (definition.links[0] if definition.links else "")).rstrip("/")
         if not self.base_url:
             raise IndexerError(f"cardigann({definition.name}): no base URL configured")
-        self._client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
+        # Many public torrent sites immediately 403 the default httpx UA
+        # (`python-httpx/x.y.z`). Send a realistic browser UA + common accept
+        # headers so trivial bot-blocks pass through. Full Cloudflare JS
+        # challenges still require flaresolverr or similar — this only fixes
+        # the low-friction cases.
+        self._client = httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=True,
+            headers=_BROWSER_HEADERS,
+        )
 
     async def close(self) -> None:
         await self._client.aclose()
