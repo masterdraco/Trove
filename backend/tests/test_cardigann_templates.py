@@ -87,3 +87,16 @@ def test_expand_no_template_passes_through() -> None:
 def test_expand_returns_unchanged_on_unknown_directive() -> None:
     # Unknown pipeline -> untouched
     assert "{{ weird_directive" in expand_template("{{ weird_directive }}", keywords="x")
+
+
+def test_1337x_url_construction_uses_expanded_template() -> None:
+    from trove.indexers.cardigann import CardigannIndexer, load_definition_yaml
+    from trove.services import catalog
+
+    catalog.reset_cache_for_tests()
+    d = load_definition_yaml(catalog.read_yaml("1337x"))
+    drv = CardigannIndexer(d, base_url="https://1337x.to")
+    path = expand_template(d.search_path, keywords="ubuntu", config=d.config_defaults)
+    assert "{{" not in path, f"path still has templates: {path}"
+    assert "ubuntu" in path
+    assert path.startswith("/") or "search" in path or "sort-" in path
