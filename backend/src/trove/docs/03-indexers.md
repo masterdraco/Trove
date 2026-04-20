@@ -114,7 +114,7 @@ The onboarding wizard also surfaces these sites as an optional step — pick any
 
 **Behind the scenes**: a catalog-installed entry is an ordinary `type=cardigann` indexer with a vendored YAML definition. The Test, Edit, and Delete buttons work the same way they do for hand-added indexers. If you ever need to override the URL or rename the entry, use **Edit** — nothing is special about catalog rows.
 
-**Updating definitions**: the shipped YAMLs track `Prowlarr/Indexers`. When a site changes its HTML, searches will start returning 0 results. Upstream usually has a fix within days. Trove refreshes the vendored files on each release; to sync sooner, a maintainer can run `scripts/update-catalog.py diff` to see what's changed upstream, then `sync` to pull.
+**Updating definitions**: the shipped YAMLs track `Prowlarr/Indexers`. When a site changes its HTML, searches will start returning 0 results. Upstream usually has a fix within days. A maintainer can run `scripts/update-catalog.py diff` to see what's changed upstream, then `sync` to pull — this is manual today, typically done alongside a release.
 
 ## Priority and ordering
 
