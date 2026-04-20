@@ -352,7 +352,15 @@ class CardigannIndexer(Indexer):
             params["q"] = kw
 
         path = expand_template(self.definition.search_path, keywords=kw, config=cfg)
-        url = self.base_url + path
+        # Prowlarr YAMLs commonly emit paths like "search/all/..." (no leading
+        # slash) that fuse into the hostname via string concatenation and break
+        # DNS resolution. Normalize before joining; pass absolute URLs through.
+        if path.startswith(("http://", "https://")):
+            url = path
+        else:
+            if path and not path.startswith("/"):
+                path = "/" + path
+            url = self.base_url + path
         try:
             resp = await self._client.get(url, params=params)
         except httpx.HTTPError as e:
