@@ -22,7 +22,7 @@ import yaml
 REPO_ROOT = Path(__file__).parent.parent
 CATALOG_DIR = REPO_ROOT / "backend" / "src" / "trove" / "indexers" / "catalog"
 REGISTRY_PATH = CATALOG_DIR / "registry.yaml"
-UPSTREAM_RAW = "https://raw.githubusercontent.com/Prowlarr/Prowlarr-indexers/master/"
+UPSTREAM_RAW = "https://raw.githubusercontent.com/Prowlarr/Indexers/master/"
 
 
 def _sha256(data: bytes) -> str:

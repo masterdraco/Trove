@@ -37,7 +37,7 @@ entries:
     description: General-purpose public tracker with reliable scene releases and good category filtering.
     categories: [movies, tv, music, software, games, books, anime, other]
     yaml_file: torrentgalaxy.yml
-    upstream_path: definitions/v11/torrentgalaxy.yml
+    upstream_path: definitions/v11/torrentgalaxyclone.yml
     mirrors:
       - https://torrentgalaxy.to
       - https://tgx.rs
@@ -57,47 +57,47 @@ entries:
     protocol: torrent
 
   - slug: magnetdl
-    display_name: MagnetDL
-    description: Magnet-link aggregator, fast and light.
+    display_name: ExtraTorrent
+    description: Public tracker for MOVIE / TV / GENERAL magnets (replaces magnetdl which has no upstream Cardigann definition).
     categories: [movies, tv, music, software, games, books, anime]
     yaml_file: magnetdl.yml
-    upstream_path: definitions/v11/magnetdl.yml
+    upstream_path: definitions/v11/extratorrent-st.yml
     mirrors:
-      - https://www.magnetdl.com
-    default_mirror: https://www.magnetdl.com
+      - https://extratorrent.st
+    default_mirror: https://extratorrent.st
     protocol: torrent
 
   - slug: torlock
-    display_name: Torlock
-    description: General-purpose tracker focused on verified torrents.
+    display_name: KickAssTorrents
+    description: Public KickAssTorrent clone for MOVIES / TV / GENERAL (replaces torlock which has no upstream Cardigann definition).
     categories: [movies, tv, music, software, games, books, anime]
     yaml_file: torlock.yml
-    upstream_path: definitions/v11/torlock.yml
+    upstream_path: definitions/v11/kickasstorrents-to.yml
     mirrors:
-      - https://www.torlock.com
-    default_mirror: https://www.torlock.com
+      - https://kickass.torrentbay.st
+    default_mirror: https://kickass.torrentbay.st
     protocol: torrent
 
   - slug: bitsearch
-    display_name: BitSearch
-    description: Aggregator that searches across multiple public sites.
+    display_name: TorrentDownload
+    description: Public torrent meta-search engine (replaces bitsearch which has no upstream Cardigann definition).
     categories: [movies, tv, music, software, games, books, anime, other]
     yaml_file: bitsearch.yml
-    upstream_path: definitions/v11/bitsearch.yml
+    upstream_path: definitions/v11/torrentdownload.yml
     mirrors:
-      - https://bitsearch.to
-    default_mirror: https://bitsearch.to
+      - https://www.torrentdownload.info
+    default_mirror: https://www.torrentdownload.info
     protocol: torrent
 
   - slug: solidtorrents
-    display_name: SolidTorrents
-    description: Multi-source torrent search aggregator.
+    display_name: TorrentProject2
+    description: Public torrent meta-search engine (replaces solidtorrents which has no upstream Cardigann definition).
     categories: [movies, tv, music, software, games, books, anime, other]
     yaml_file: solidtorrents.yml
-    upstream_path: definitions/v11/solidtorrents.yml
+    upstream_path: definitions/v11/torrentproject2.yml
     mirrors:
-      - https://solidtorrents.to
-    default_mirror: https://solidtorrents.to
+      - https://torrentproject2.net
+    default_mirror: https://torrentproject2.net
     protocol: torrent
 
   - slug: nyaa
@@ -135,12 +135,12 @@ entries:
     protocol: torrent
 
   - slug: animetosho
-    display_name: AnimeTosho
-    description: Anime mirror and long-term archive of Nyaa + Tokyo Toshokan.
+    display_name: Tokyo Toshokan
+    description: Public BitTorrent library for Japanese media including anime (replaces animetosho which has no upstream Cardigann definition).
     categories: [anime]
     yaml_file: animetosho.yml
-    upstream_path: definitions/v11/animetosho.yml
+    upstream_path: definitions/v11/tokyotosho.yml
     mirrors:
-      - https://animetosho.org
-    default_mirror: https://animetosho.org
+      - https://www.tokyotosho.info
+    default_mirror: https://www.tokyotosho.info
     protocol: torrent

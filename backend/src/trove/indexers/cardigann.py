@@ -97,7 +97,12 @@ def load_definition(data: dict[str, Any]) -> CardigannDefinition:
         if not isinstance(cat, dict):
             continue
         cat_id = str(cat.get("id", ""))
-        mapped = _map_category(int(cat.get("cat", 0)) if cat.get("cat") else 0)
+        raw_cat = cat.get("cat", 0)
+        try:
+            numeric_cat = int(raw_cat)
+        except (ValueError, TypeError):
+            numeric_cat = 0
+        mapped = _map_category(numeric_cat)
         if cat_id and mapped is not None:
             category_mapping[cat_id] = mapped
 
