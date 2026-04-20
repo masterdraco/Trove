@@ -240,12 +240,20 @@
         Newznab/Torznab APIs and Cardigann-style YAML trackers.
       </p>
     </div>
-    <button
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-      onclick={openForm}
-    >
-      <Plus class="h-4 w-4" /> Add indexer
-    </button>
+    <div class="flex items-center gap-2">
+      <a
+        href="/indexers/catalog"
+        class="inline-flex items-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm hover:bg-muted"
+      >
+        <Database class="h-4 w-4" /> Browse catalog
+      </a>
+      <button
+        class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        onclick={openForm}
+      >
+        <Plus class="h-4 w-4" /> Add indexer
+      </button>
+    </div>
   </div>
 
   {#if loading}
