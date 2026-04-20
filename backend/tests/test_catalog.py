@@ -16,9 +16,9 @@ def _reset_cache() -> None:
 
 def test_registry_loads() -> None:
     entries = catalog.list_entries()
-    assert len(entries) >= 12
+    assert len(entries) >= 10
     slugs = {e.slug for e in entries}
-    for required in ("thepiratebay", "1337x", "nyaa", "eztv", "yts"):
+    for required in ("1337x", "nyaa", "eztv", "limetorrents"):
         assert required in slugs, f"missing catalog entry: {required}"
 
 

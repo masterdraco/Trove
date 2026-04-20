@@ -6,19 +6,6 @@
 # so scripts/update-catalog.py can diff against Prowlarr-indexers.
 
 entries:
-  - slug: thepiratebay
-    display_name: The Pirate Bay
-    description: General-purpose public torrent tracker, no account required.
-    categories: [movies, tv, music, software, games, books, other]
-    yaml_file: thepiratebay.yml
-    upstream_path: definitions/v11/thepiratebay.yml
-    mirrors:
-      - https://thepiratebay.org
-      - https://tpb.party
-      - https://piratebay.live
-    default_mirror: https://thepiratebay.org
-    protocol: torrent
-
   - slug: 1337x
     display_name: 1337x
     description: Large public general-purpose tracker with strong TV/movie scene coverage.
@@ -122,17 +109,6 @@ entries:
       - https://eztv.re
       - https://eztvx.to
     default_mirror: https://eztv.re
-    protocol: torrent
-
-  - slug: yts
-    display_name: YTS
-    description: Public tracker specializing in small-size movie encodes.
-    categories: [movies]
-    yaml_file: yts.yml
-    upstream_path: definitions/v11/yts.yml
-    mirrors:
-      - https://yts.mx
-    default_mirror: https://yts.mx
     protocol: torrent
 
   - slug: animetosho
