@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Vendor or diff Cardigann YAML definitions from Prowlarr-indexers.
+"""Vendor or diff Cardigann YAML definitions from Prowlarr/Indexers.
 
 Usage:
     scripts/update-catalog.py sync    # download + overwrite vendored files
     scripts/update-catalog.py diff    # print per-file status, no writes
 
-The canonical upstream is Prowlarr/Prowlarr-indexers @ master. Slug->path
+The canonical upstream is Prowlarr/Indexers @ master. Slug->path
 mapping lives in backend/src/trove/indexers/catalog/registry.yaml.
 """
 
