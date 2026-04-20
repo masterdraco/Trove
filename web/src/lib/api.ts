@@ -130,6 +130,23 @@ export type IndexerHealthOut = {
   sparkline: number[][];
 };
 
+export type CatalogEntryOut = {
+  slug: string;
+  display_name: string;
+  description: string;
+  categories: Category[];
+  mirrors: string[];
+  default_mirror: string;
+  protocol: Protocol;
+  logo: string | null;
+  already_installed: boolean;
+};
+
+export type CatalogInstallRequest = {
+  base_url: string;
+  name?: string | null;
+};
+
 export type NotificationProviderType =
   | "discord_webhook"
   | "discord_bot"
@@ -495,7 +512,15 @@ export const api = {
       }),
     remove: (id: number) => request<void>(`/api/indexers/${id}`, { method: "DELETE" }),
     test: (id: number) =>
-      request<IndexerTestResult>(`/api/indexers/${id}/test`, { method: "POST" })
+      request<IndexerTestResult>(`/api/indexers/${id}/test`, { method: "POST" }),
+    catalog: {
+      list: () => request<CatalogEntryOut[]>("/api/indexers/catalog"),
+      install: (slug: string, payload: CatalogInstallRequest) =>
+        request<IndexerOut>(`/api/indexers/catalog/${slug}`, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        })
+    }
   },
 
   search: (payload: {
