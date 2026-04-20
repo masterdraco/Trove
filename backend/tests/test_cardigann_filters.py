@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 from bs4 import BeautifulSoup
 
 from trove.indexers.cardigann import (
@@ -100,9 +98,9 @@ def test_unknown_filter_logs_warning(caplog) -> None:
     with caplog.at_level(logging.WARNING):
         result = _apply(drv, "<tr><td>hello</td></tr>", "title")
     assert result == "hello"
-    assert any(
-        "definitelynotarealfilter" in rec.message for rec in caplog.records
-    ), "expected a warning mentioning the unknown filter name"
+    assert any("definitelynotarealfilter" in rec.message for rec in caplog.records), (
+        "expected a warning mentioning the unknown filter name"
+    )
 
 
 def test_unknown_filter_logs_once_per_process(caplog) -> None:
