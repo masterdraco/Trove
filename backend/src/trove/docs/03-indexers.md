@@ -100,6 +100,22 @@ For trackers that don't have a native API, Cardigann uses YAML definition files 
 - Custom headers beyond what httpx sends by default
 - JavaScript-heavy sites that need Playwright/Puppeteer
 
+## Catalog (public sites, one click)
+
+For public, no-account torrent sites, Trove ships with a curated catalog of pre-configured definitions including The Pirate Bay, 1337x, TorrentGalaxy, LimeTorrents, Nyaa, EZTV, YTS, and others. Five slugs map to substitute definitions (ExtraTorrent, KickAssTorrents, TorrentDownload, TorrentProject2, Tokyo Toshokan) because the original sites have no upstream Cardigann YAML — each entry honestly declares its actual source in the description.
+
+**How to install:**
+
+1. On `/indexers`, click **Browse catalog** (next to **Add indexer**).
+2. Pick a mirror from the dropdown on the site's tile — catalog entries list multiple known mirrors for sites that have them.
+3. Click **Add**. The tile flips to **Installed** and the site appears on `/indexers` as a normal Cardigann indexer.
+
+The onboarding wizard also surfaces these sites as an optional step — pick any you want in one go.
+
+**Behind the scenes**: a catalog-installed entry is an ordinary `type=cardigann` indexer with a vendored YAML definition. The Test, Edit, and Delete buttons work the same way they do for hand-added indexers. If you ever need to override the URL or rename the entry, use **Edit** — nothing is special about catalog rows.
+
+**Updating definitions**: the shipped YAMLs track `Prowlarr/Indexers`. When a site changes its HTML, searches will start returning 0 results. Upstream usually has a fix within days. Trove refreshes the vendored files on each release; to sync sooner, a maintainer can run `scripts/update-catalog.py diff` to see what's changed upstream, then `sync` to pull.
+
 ## Priority and ordering
 
 Each indexer has a **priority** field (default 50). Lower numbers run first in the fan-out, but since Trove queries all enabled indexers in parallel, priority mainly matters for tie-breaking when the same release appears from multiple sources — the higher-priority indexer's copy is kept.
