@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -17,6 +18,9 @@ from trove.indexers.base import (
     IndexerType,
     SearchQuery,
 )
+
+log = logging.getLogger(__name__)
+_WARNED_FILTERS: set[str] = set()
 
 SIZE_RE = re.compile(r"([\d.,]+)\s*(TB|GB|MB|KB|B)", re.IGNORECASE)
 SIZE_MULTIPLIERS = {
@@ -301,4 +305,7 @@ class CardigannIndexer(Indexer):
                 return re.sub(pattern, replacement, value)
             except re.error:
                 return value
+        if name and name not in _WARNED_FILTERS:
+            _WARNED_FILTERS.add(name)
+            log.warning("cardigann: unknown filter %r — passing value through unchanged", name)
         return value

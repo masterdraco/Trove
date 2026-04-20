@@ -88,3 +88,33 @@ def test_re_replace_removes_matches_with_empty_replacement() -> None:
         [{"name": "re_replace", "args": [r"\d+", ""]}],
     )
     assert _apply(drv, "<tr><td>abc123def456</td></tr>", "title") == "abcdef"
+
+
+def test_unknown_filter_logs_warning(caplog) -> None:
+    import logging
+
+    drv = _driver_with_field(
+        "title",
+        [{"name": "definitelynotarealfilter"}],
+    )
+    with caplog.at_level(logging.WARNING):
+        result = _apply(drv, "<tr><td>hello</td></tr>", "title")
+    assert result == "hello"
+    assert any(
+        "definitelynotarealfilter" in rec.message for rec in caplog.records
+    ), "expected a warning mentioning the unknown filter name"
+
+
+def test_unknown_filter_logs_once_per_process(caplog) -> None:
+    import logging
+
+    drv = _driver_with_field(
+        "title",
+        [{"name": "another-fake-filter"}],
+    )
+    with caplog.at_level(logging.WARNING):
+        _apply(drv, "<tr><td>1</td></tr>", "title")
+        _apply(drv, "<tr><td>2</td></tr>", "title")
+        _apply(drv, "<tr><td>3</td></tr>", "title")
+    count = sum(1 for rec in caplog.records if "another-fake-filter" in rec.message)
+    assert count == 1, f"expected exactly one warning, got {count}"
