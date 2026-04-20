@@ -25,7 +25,6 @@ from trove.api import downloads as downloads_router
 from trove.api import feeds as feeds_router
 from trove.api import health as health_router
 from trove.api import indexers as indexers_router
-from trove.api.catalog import router as catalog_router
 from trove.api import library as library_router
 from trove.api import logs as logs_router
 from trove.api import notifications as notifications_router
@@ -35,6 +34,7 @@ from trove.api import system as system_router
 from trove.api import tasks as tasks_router
 from trove.api import torznab as torznab_router
 from trove.api import watchlist as watchlist_router
+from trove.api.catalog import router as catalog_router
 from trove.config import get_settings
 from trove.db import init_db
 from trove.logging_setup import configure_logging

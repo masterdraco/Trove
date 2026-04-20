@@ -41,7 +41,7 @@ async def list_catalog(
     installed_slugs = set(
         session.exec(
             select(IndexerRow.catalog_slug).where(
-                IndexerRow.catalog_slug.is_not(None)  # type: ignore[attr-defined]
+                IndexerRow.catalog_slug.is_not(None)  # type: ignore[union-attr]
             )
         ).all()
     )
@@ -66,10 +66,7 @@ async def list_catalog(
 def _dedup_name(session: Session, base: str) -> str:
     candidate = base
     suffix = 2
-    while (
-        session.exec(select(IndexerRow).where(IndexerRow.name == candidate)).first()
-        is not None
-    ):
+    while session.exec(select(IndexerRow).where(IndexerRow.name == candidate)).first() is not None:
         candidate = f"{base}-{suffix}"
         suffix += 1
     return candidate
@@ -85,9 +82,7 @@ async def install_catalog_entry(
     try:
         entry = catalog.get_entry(slug)
     except KeyError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="unknown_slug"
-        ) from None
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_slug") from None
 
     if payload.base_url not in entry.mirrors:
         raise HTTPException(
