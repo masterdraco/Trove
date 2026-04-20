@@ -89,10 +89,11 @@ For trackers that don't have a native API, Cardigann uses YAML definition files 
 5. Save and test
 
 **What works**:
-- Static `search.paths[0].path`
-- `search.rows.selector` (CSS selectors)
+- `search.paths[0].path` with Go-template expansion (`{{ .Keywords }}`, `{{ if .Keywords }}…{{ else }}…{{ end }}`, `{{ .Config.X }}`)
+- `search.rows.selector` (CSS selectors, including template-expanded ones)
 - Field extraction: `title`, `download`, `size`, `infohash`, `category`
-- Basic filters: `replace`, `regexp`, `append`, `prepend`
+- Basic filters: `replace`, `regexp`, `append`, `prepend`, `trim`, `tolower`, `re_replace`
+- `settings:` block defaults populated automatically as `{{ .Config.X }}` values
 
 **What doesn't work yet**:
 - Login flows (cookie, form, POST)
@@ -102,7 +103,9 @@ For trackers that don't have a native API, Cardigann uses YAML definition files 
 
 ## Catalog (public sites, one click)
 
-For public, no-account torrent sites, Trove ships with a curated catalog of pre-configured definitions including The Pirate Bay, 1337x, TorrentGalaxy, LimeTorrents, Nyaa, EZTV, YTS, and others. Five slugs map to substitute definitions (ExtraTorrent, KickAssTorrents, TorrentDownload, TorrentProject2, Tokyo Toshokan) because the original sites have no upstream Cardigann YAML — each entry honestly declares its actual source in the description.
+For public, no-account torrent sites, Trove ships with a curated catalog of pre-configured definitions including 1337x, TorrentGalaxy, LimeTorrents, Nyaa, EZTV, and others. Five slugs map to substitute definitions (ExtraTorrent, KickAssTorrents, TorrentDownload, TorrentProject2, Tokyo Toshokan) because the original sites have no upstream Cardigann YAML — each entry honestly declares its actual source in the description.
+
+The Pirate Bay and YTS are not in the current catalog because both return JSON responses that require a native driver rather than the HTML-scraping Cardigann parser. They are candidates for a follow-up JSON-indexer batch.
 
 **How to install:**
 
