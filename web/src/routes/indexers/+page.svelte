@@ -16,7 +16,9 @@
     XCircle,
     Database,
     Pencil,
-    Activity
+    Activity,
+    Power,
+    PowerOff
   } from "lucide-svelte";
 
   let items = $state<IndexerOut[]>([]);
@@ -27,6 +29,7 @@
   let formError = $state<string | null>(null);
   let testingId = $state<number | null>(null);
   let editingId = $state<number | null>(null);
+  let togglingId = $state<number | null>(null);
 
   function formatRelative(iso: string | null): string {
     if (!iso) return "never";
@@ -226,6 +229,16 @@
     await load();
   }
 
+  async function toggleEnabled(item: IndexerOut) {
+    togglingId = item.id;
+    try {
+      await api.indexers.update(item.id, { enabled: !item.enabled });
+      items = items.map((x) => (x.id === item.id ? { ...x, enabled: !x.enabled } : x));
+    } finally {
+      togglingId = null;
+    }
+  }
+
   function formatTime(iso: string | null): string {
     if (!iso) return "never";
     return new Date(iso).toLocaleString();
@@ -286,8 +299,15 @@
         <tbody>
           {#each items as item (item.id)}
             {@const h = healthById[item.id]}
-            <tr class="border-t border-border">
-              <td class="px-4 py-3 font-medium">{item.name}</td>
+            <tr class="border-t border-border" class:opacity-60={!item.enabled}>
+              <td class="px-4 py-3 font-medium">
+                {item.name}
+                {#if !item.enabled}
+                  <span class="ml-2 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    disabled
+                  </span>
+                {/if}
+              </td>
               <td class="px-4 py-3">
                 <span class="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs">
                   {item.type}
@@ -344,6 +364,21 @@
               </td>
               <td class="px-4 py-3 text-right">
                 <div class="flex justify-end gap-2">
+                  <button
+                    class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs hover:bg-muted"
+                    onclick={() => toggleEnabled(item)}
+                    disabled={togglingId === item.id}
+                    title={item.enabled ? "Disable — skip this indexer in searches" : "Enable — include this indexer in searches"}
+                  >
+                    {#if togglingId === item.id}
+                      <Loader2 class="h-3.5 w-3.5 animate-spin" />
+                    {:else if item.enabled}
+                      <Power class="h-3.5 w-3.5 text-green-600" />
+                    {:else}
+                      <PowerOff class="h-3.5 w-3.5 text-muted-foreground" />
+                    {/if}
+                    {item.enabled ? "Disable" : "Enable"}
+                  </button>
                   <button
                     class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs hover:bg-muted"
                     onclick={() => testOne(item)}
