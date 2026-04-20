@@ -272,4 +272,7 @@ class CardigannIndexer(Indexer):
             return value + args
         if name == "prepend" and isinstance(args, str):
             return args + value
+        if name == "urldecode":
+            from urllib.parse import unquote
+            return unquote(value)
         return value
