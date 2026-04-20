@@ -39,9 +39,10 @@ entries:
     yaml_file: torrentgalaxy.yml
     upstream_path: definitions/v11/torrentgalaxyclone.yml
     mirrors:
-      - https://torrentgalaxy.to
-      - https://tgx.rs
-    default_mirror: https://torrentgalaxy.to
+      - https://torrentgalaxy.one
+      - https://torrentgalaxy.info
+      - https://torrentgalaxy.space
+    default_mirror: https://torrentgalaxy.one
     protocol: torrent
 
   - slug: limetorrents
