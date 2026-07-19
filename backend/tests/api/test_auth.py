@@ -72,3 +72,81 @@ def test_login_rejects_bad_password(client: TestClient) -> None:
     )
     assert bad.status_code == 401
     assert bad.json()["detail"] == "invalid_credentials"
+
+
+def _setup_admin(client: TestClient, password: str = "correct horse battery staple") -> None:
+    client.post("/api/auth/setup", json={"username": "admin", "password": password})
+
+
+def test_change_password_updates_credentials(client: TestClient) -> None:
+    _setup_admin(client)
+
+    resp = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "correct horse battery staple",
+            "new_password": "a brand new pass phrase",
+        },
+    )
+    assert resp.status_code == 204
+
+    # session survives the change
+    assert client.get("/api/auth/me").status_code == 200
+
+    # old password no longer works, new one does
+    client.post("/api/auth/logout")
+    client.cookies.clear()
+
+    old = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "correct horse battery staple"},
+    )
+    assert old.status_code == 401
+
+    new = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "a brand new pass phrase"},
+    )
+    assert new.status_code == 200
+
+
+def test_change_password_rejects_wrong_current(client: TestClient) -> None:
+    _setup_admin(client)
+
+    resp = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "not the right one",
+            "new_password": "a brand new pass phrase",
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "invalid_current_password"
+
+
+def test_change_password_requires_authentication(client: TestClient) -> None:
+    _setup_admin(client)
+    client.post("/api/auth/logout")
+    client.cookies.clear()
+
+    resp = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "correct horse battery staple",
+            "new_password": "a brand new pass phrase",
+        },
+    )
+    assert resp.status_code == 401
+
+
+def test_change_password_rejects_short_new_password(client: TestClient) -> None:
+    _setup_admin(client)
+
+    resp = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "correct horse battery staple",
+            "new_password": "short",
+        },
+    )
+    assert resp.status_code == 422

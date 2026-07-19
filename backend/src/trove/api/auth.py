@@ -22,6 +22,11 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=255)
+
+
 class UserOut(BaseModel):
     id: int
     username: str
@@ -93,6 +98,21 @@ async def login_endpoint(
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout_endpoint(response: Response) -> Response:
     _clear_session_cookie(response)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password_endpoint(
+    payload: ChangePasswordRequest,
+    user: User = Depends(current_user),
+    session: Session = Depends(db_session),
+) -> Response:
+    if not auth_service.verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid_current_password",
+        )
+    auth_service.update_password(session, user, payload.new_password)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

@@ -48,6 +48,20 @@ def touch_last_login(session: Session, user: User) -> None:
     session.commit()
 
 
+def update_password(session: Session, user: User, new_password: str) -> None:
+    user.password_hash = hash_password(new_password)
+    session.add(user)
+    session.commit()
+
+
+def set_password_by_username(session: Session, username: str, new_password: str) -> User | None:
+    user = get_user_by_username(session, username)
+    if user is None:
+        return None
+    update_password(session, user, new_password)
+    return user
+
+
 def _signer() -> TimestampSigner:
     return TimestampSigner(get_settings().session_secret)
 

@@ -19,7 +19,9 @@
     Eye,
     EyeOff,
     Info,
-    AlertTriangle
+    AlertTriangle,
+    KeyRound,
+    ShieldCheck
   } from "lucide-svelte";
 
   type AppSetting = Awaited<ReturnType<typeof api.appSettings.list>>[number];
@@ -286,12 +288,121 @@
     const gb = bytes / 1024 / 1024 / 1024;
     return `${gb.toFixed(1)} GB`;
   }
+
+  // --- Account: change password ---
+  let currentPassword = $state("");
+  let newPassword = $state("");
+  let confirmPassword = $state("");
+  let pwSaving = $state(false);
+  let pwError = $state<string | null>(null);
+  let pwSuccess = $state(false);
+  let showPw = $state(false);
+
+  async function changePassword(event: Event) {
+    event.preventDefault();
+    pwError = null;
+    pwSuccess = false;
+    if (newPassword.length < 8) {
+      pwError = "New password must be at least 8 characters.";
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      pwError = "New passwords do not match.";
+      return;
+    }
+    pwSaving = true;
+    try {
+      await api.changePassword(currentPassword, newPassword);
+      pwSuccess = true;
+      currentPassword = "";
+      newPassword = "";
+      confirmPassword = "";
+    } catch (e) {
+      const detail = (e as { detail?: string }).detail;
+      pwError =
+        detail === "invalid_current_password"
+          ? "Current password is incorrect."
+          : "Could not change password.";
+    } finally {
+      pwSaving = false;
+    }
+  }
 </script>
 
 <div class="max-w-3xl space-y-6">
   <div>
     <h2 class="text-xl font-semibold">Settings</h2>
     <p class="mt-1 text-sm text-muted-foreground">Server configuration and integrations.</p>
+  </div>
+
+  <div class="rounded-xl border border-border bg-card p-5">
+    <h3 class="flex items-center gap-2 text-base font-semibold">
+      <KeyRound class="h-4 w-4 text-primary" /> Account
+    </h3>
+    <p class="mt-1 text-sm text-muted-foreground">Change the password you use to sign in.</p>
+
+    <form class="mt-5 max-w-sm space-y-3" onsubmit={changePassword}>
+      <label class="block">
+        <span class="mb-1.5 block text-sm font-medium">Current password</span>
+        <input
+          type={showPw ? "text" : "password"}
+          bind:value={currentPassword}
+          autocomplete="current-password"
+          required
+          class="input-base"
+        />
+      </label>
+      <label class="block">
+        <span class="mb-1.5 block text-sm font-medium">New password</span>
+        <input
+          type={showPw ? "text" : "password"}
+          bind:value={newPassword}
+          autocomplete="new-password"
+          minlength="8"
+          required
+          class="input-base"
+        />
+      </label>
+      <label class="block">
+        <span class="mb-1.5 block text-sm font-medium">Confirm new password</span>
+        <input
+          type={showPw ? "text" : "password"}
+          bind:value={confirmPassword}
+          autocomplete="new-password"
+          minlength="8"
+          required
+          class="input-base"
+        />
+      </label>
+
+      <label class="flex items-center gap-2 text-xs text-muted-foreground">
+        <input type="checkbox" bind:checked={showPw} class="rounded border-border" />
+        Show passwords
+      </label>
+
+      {#if pwError}
+        <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {pwError}
+        </div>
+      {/if}
+      {#if pwSuccess}
+        <div class="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+          <ShieldCheck class="h-4 w-4" /> Password updated.
+        </div>
+      {/if}
+
+      <button type="submit" disabled={pwSaving} class="btn-primary">
+        {#if pwSaving}
+          <Loader2 class="h-3.5 w-3.5 animate-spin" />
+        {/if}
+        {pwSaving ? "Updating…" : "Update password"}
+      </button>
+    </form>
+
+    <p class="mt-4 border-t border-border/50 pt-3 text-xs text-muted-foreground">
+      Locked out? Reset from the server with
+      <code class="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">trove reset-password &lt;username&gt;</code>.
+    </p>
   </div>
 
   <div class="rounded-xl border border-border bg-card p-5">

@@ -1,7 +1,7 @@
 <script lang="ts">
   import "../app.css";
   import { onMount } from "svelte";
-  import { goto } from "$app/navigation";
+  import { goto, afterNavigate } from "$app/navigation";
   import { page } from "$app/stores";
   import { api, type ApiError } from "$lib/api";
   import { currentUser } from "$lib/stores/auth";
@@ -33,6 +33,7 @@
     Zap,
     Activity,
     Sliders,
+    Menu,
     X
   } from "lucide-svelte";
 
@@ -124,6 +125,14 @@
   // Manually-toggled groups. A group is considered expanded if it's in
   // this set OR if the current route is the parent or a child.
   let manuallyExpanded = $state<Set<string>>(new Set());
+
+  // Mobile navigation drawer (below the `lg` breakpoint).
+  let mobileNavOpen = $state(false);
+
+  // Close the drawer whenever the route changes.
+  afterNavigate(() => {
+    mobileNavOpen = false;
+  });
 
   function isRouteActive(href: string): boolean {
     if (href === "/") return $page.url.pathname === "/";
@@ -220,8 +229,18 @@
   {@render children()}
 {:else}
   <div class="flex h-full">
+    {#if mobileNavOpen}
+      <button
+        type="button"
+        class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+        onclick={() => (mobileNavOpen = false)}
+        aria-label="Close navigation"
+      ></button>
+    {/if}
     <aside
-      class="flex w-64 shrink-0 flex-col border-r border-border/50 bg-card/30 px-4 py-5 backdrop-blur-xl"
+      class="fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 transform flex-col border-r border-border/50 bg-card/95 px-4 py-5 backdrop-blur-xl transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0 lg:bg-card/30 {mobileNavOpen
+        ? 'translate-x-0'
+        : '-translate-x-full'}"
     >
       <div class="mb-6 flex items-center gap-3 px-2">
         <div class="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl">
@@ -323,7 +342,19 @@
     </aside>
 
     <main class="min-w-0 flex-1 overflow-auto">
-      <div class="sticky top-0 z-30 border-b border-border/40 bg-background/70 backdrop-blur-xl">
+      <div class="sticky top-0 z-30 flex items-center gap-3 border-b border-border/40 bg-background/80 px-4 py-3 backdrop-blur-xl lg:hidden">
+        <button
+          type="button"
+          class="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-muted-foreground hover:bg-white/[0.06] hover:text-foreground"
+          onclick={() => (mobileNavOpen = true)}
+          aria-label="Open navigation"
+        >
+          <Menu class="h-5 w-5" />
+        </button>
+        <img src="/logo-128.png" alt="" class="h-7 w-7 object-contain" />
+        <span class="text-base font-bold tracking-tight"><span class="text-gradient">Trove</span></span>
+      </div>
+      <div class="sticky top-0 z-20 border-b border-border/40 bg-background/70 backdrop-blur-xl lg:top-0">
         <a
           href="https://www.buymeacoffee.com/MasterDraco"
           target="_blank"
@@ -336,7 +367,7 @@
             src="/coffee-480.png"
             srcset="/coffee-480.png 1x, /coffee-720.png 2x"
             alt="Buy me a coffee"
-            class="h-24 w-auto transition-transform group-hover:scale-105"
+            class="h-16 w-auto transition-transform group-hover:scale-105 sm:h-24"
             loading="lazy"
           />
         </a>
@@ -387,7 +418,7 @@
           </div>
         </div>
       {/if}
-      <div class="mx-auto max-w-[1400px] px-8 py-8 animate-fade-in">
+      <div class="mx-auto max-w-[1400px] px-4 py-6 animate-fade-in sm:px-6 sm:py-8 lg:px-8">
         {@render children()}
       </div>
     </main>
